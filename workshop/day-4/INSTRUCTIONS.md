@@ -125,7 +125,7 @@ graph TB
     subgraph "MAC Generation"
         A1[Original Message]
         A2[Calculate MAC]
-        A3[Append MAC (DE 128)]
+        A3[Append MAC in DE 128]
         A4[Transmit Message]
     end
 
