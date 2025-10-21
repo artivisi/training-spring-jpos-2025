@@ -1,10 +1,11 @@
 # Hari 1 – Spring Boot Application Setup, REST, dan Database
 
 ## Tujuan
-- Setup PostgreSQL database untuk payment system
-- Persiapkan struktur data untuk transaksi dan bill payment
-- Testing dengan Postman untuk REST API
-- Validasi database integration
+- Pengenalan ekosistem pembayaran & ISO-8583
+- Setup Spring Boot projects (Acquirer & Billing Provider)
+- Implementasi REST API untuk payment processing
+- Integrasi database PostgreSQL & logging transaksi
+- Testing dengan Postman untuk API validation
 
 ## 1. Environment Setup
 
@@ -115,9 +116,165 @@ docker-compose exec postgres psql -U postgres -d payment_system -c "SELECT COUNT
 docker-compose exec postgres psql -U postgres -d payment_system -c "SELECT COUNT(*) FROM transactions;"
 ```
 
-## 3. API Testing dengan Postman
+## 3. Spring Boot Application Setup
 
-### 3.1 Test Acquirer Service (Port 8080)
+### 3.1 Project Structure
+```bash
+# Buat struktur project untuk dua aplikasi
+mkdir -p acquirer-service/src/main/java/com/training/acquirer
+mkdir -p acquirer-service/src/main/resources
+mkdir -p billing-provider/src/main/java/com/training/billing
+mkdir -p billing-provider/src/main/resources
+```
+
+### 3.2 Spring Boot Dependencies
+Participants will create two Spring Boot projects:
+
+**Required Dependencies:**
+- `spring-boot-starter-web` - REST API development
+- `spring-boot-starter-data-jpa` - Database integration
+- `postgresql` - PostgreSQL JDBC driver
+- `spring-boot-starter-validation` - Request validation
+- `spring-boot-starter-actuator` - Health checks and monitoring
+
+**Implementation Tasks:**
+1. Create POM files for acquirer-service and billing-provider
+2. Configure Spring Boot parent dependency
+3. Add required dependencies for both services
+4. Configure Maven compiler plugin for Java 25
+
+### 3.3 Application Configuration
+Participants will configure application.yml files:
+
+**Acquirer Service Configuration:**
+- Server port: 8080
+- Application name: acquirer-service
+- Database connection to PostgreSQL
+- JPA configuration with PostgreSQL dialect
+- Logging levels for debugging
+- Actuator endpoints for health checks
+
+**Billing Provider Configuration:**
+- Server port: 8082
+- Application name: billing-provider
+- Database connection to PostgreSQL
+- JPA configuration for entity management
+
+### 3.4 Domain Models
+Participants will create JPA entities:
+
+**Transaction Entity Features:**
+- @Entity and @Table annotations
+- Primary key with @GeneratedValue
+- Unique transaction ID field
+- BigDecimal amount with precision
+- Transaction status enum (PENDING, SUCCESS, FAILED)
+- Timestamp fields with @CreationTimestamp and @UpdateTimestamp
+- Proper validation annotations
+
+**Bill Entity Features:**
+- Primary key and unique bill ID
+- Customer information fields
+- Amount and fee fields with proper precision
+- Bill status enum (ACTIVE, PAID, EXPIRED)
+- Due date and description fields
+- Proper relationship annotations
+
+## 4. REST API Implementation
+
+### 4.1 Acquirer Service API
+Participants will implement:
+
+**PaymentRequest DTO:**
+- Bean validation annotations (@NotBlank, @NotNull, @Positive)
+- Required fields: billId, customerId, amount
+- Optional fields: currency, customerEmail, customerPhone
+- Proper getter/setter methods
+
+**PaymentController Features:**
+- @RestController and @RequestMapping annotations
+- Dependency injection with @Autowired
+- @PostMapping for payment processing
+- @GetMapping for status checking
+- @Valid annotation for request validation
+- Proper logging with @Slf4j
+- Health check endpoint with service information
+
+### 4.2 Billing Provider API
+Participants will implement:
+
+**BillController Features:**
+- REST endpoints for bill inquiry
+- Bill payment processing endpoint
+- Bill validation endpoint
+- Health check endpoint
+- Proper request/response handling
+- Structured logging for debugging
+- Error handling with appropriate HTTP status codes
+
+**Required DTOs:**
+- BillResponse for inquiry results
+- BillPaymentRequest for payment processing
+- BillValidationRequest for bill validation
+- BillValidationResponse for validation results
+
+## 5. Service Layer Implementation
+
+### 5.1 PaymentService
+Participants will implement:
+
+**Core Service Features:**
+- @Service and @Transactional annotations
+- Transaction ID generation with timestamp
+- Transaction record creation and persistence
+- Integration with billing provider
+- Error handling and transaction status updates
+
+**Business Logic:**
+- Transaction state management
+- Billing provider communication
+- Response mapping and error handling
+- Audit trail creation
+- Proper exception handling
+
+**Integration Requirements:**
+- TransactionRepository for data access
+- BillServiceClient for inter-service communication
+- Proper logging for debugging and monitoring
+- Builder pattern for response construction
+
+### 5.2 Repository Layer
+Participants will create Spring Data repositories:
+
+**TransactionRepository Features:**
+- Spring Data JPA repository interface
+- Custom query method for finding by transaction ID
+- Proper exception handling for not found cases
+
+**BillRepository Features:**
+- CRUD operations for bill entities
+- Query methods for bill status and customer ID
+- Custom queries for business requirements
+
+## 6. Application Startup
+Participants will create main application classes:
+
+**Spring Boot Application Features:**
+- @SpringBootApplication annotation
+- Main method with SpringApplication.run()
+- Component scanning configuration
+- Proper package structure
+
+**Implementation Tasks:**
+1. Create AcquirerApplication class
+2. Create BillingProviderApplication class
+3. Configure component scanning
+4. Test application startup
+5. Verify actuator endpoints are working
+
+## 7. API Testing dengan Postman
+
+### 7.1 Test Acquirer Service (Port 8080)
 ```http
 # Payment Request
 POST http://localhost:8080/api/v1/payment/request
@@ -138,7 +295,7 @@ GET http://localhost:8080/api/v1/payment/status/TXN20251021001
 GET http://localhost:8080/api/v1/health
 ```
 
-### 3.2 Test Billing Provider (Port 8082)
+### 7.2 Test Billing Provider (Port 8082)
 ```http
 # Bill Inquiry
 GET http://localhost:8082/api/v1/bill/inquiry/BILL001
@@ -163,9 +320,9 @@ Content-Type: application/json
 }
 ```
 
-## 4. Database Validation
+## 8. Database Validation
 
-### 4.1 Query Data untuk Testing
+### 8.1 Query Data untuk Testing
 ```sql
 -- Check bills available
 SELECT * FROM bills WHERE status = 'ACTIVE';
