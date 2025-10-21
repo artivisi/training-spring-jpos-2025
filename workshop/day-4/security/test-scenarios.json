@@ -1,0 +1,389 @@
+{
+  "securityTestScenarios": {
+    "pinOperations": [
+      {
+        "name": "PIN Block Generation Format 0",
+        "description": "Generate PIN block using ANSI X9.8 Format 0",
+        "request": {
+          "pin": "123456",
+          "pan": "4111111111111111",
+          "format": 0
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "pinBlock": "041234567890ABCDE",
+          "format": 0,
+          "panHash": "HASHED_PAN_VALUE"
+        },
+        "validation": {
+          "pinBlockLength": 16,
+          "format": 0,
+          "validChecksum": true
+        }
+      },
+      {
+        "name": "PIN Block Generation Format 3",
+        "description": "Generate PIN block using ISO 9564-1 Format 3",
+        "request": {
+          "pin": "123456",
+          "pan": "4111111111111111",
+          "format": 3
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "pinBlock": "341234567890FEDCBA",
+          "format": 3,
+          "panHash": "HASHED_PAN_VALUE"
+        }
+      },
+      {
+        "name": "PIN Block Verification Success",
+        "description": "Verify correct PIN block against PAN and PIN",
+        "request": {
+          "pinBlock": "041234567890ABCDE",
+          "pan": "4111111111111111",
+          "pin": "123456",
+          "format": 0
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "verificationResult": true,
+          "message": "PIN verification successful"
+        }
+      },
+      {
+        "name": "PIN Block Verification Failure",
+        "description": "Verify incorrect PIN block",
+        "request": {
+          "pinBlock": "041234567890ABCDE",
+          "pan": "4111111111111111",
+          "pin": "654321",
+          "format": 0
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "verificationResult": false,
+          "message": "PIN verification failed"
+        }
+      },
+      {
+        "name": "PIN Block Format Conversion",
+        "description": "Convert PIN block from Format 0 to Format 3",
+        "request": {
+          "pinBlock": "041234567890ABCDE",
+          "pan": "4111111111111111",
+          "fromFormat": 0,
+          "toFormat": 3
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "originalPinBlock": "041234567890ABCDE",
+          "convertedPinBlock": "341234567890FEDCBA",
+          "fromFormat": 0,
+          "toFormat": 3
+        }
+      }
+    ],
+    "macOperations": [
+      {
+        "name": "MAC Generation ANSI X9.19",
+        "description": "Generate MAC using ANSI X9.19 algorithm",
+        "request": {
+          "message": "0200B220000000100000000000001000000000000001234567890123456000000001270000912341025123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890",
+          "key": "0123456789ABCDEF0123456789ABCDEF",
+          "algorithm": "ANSI_X9_19"
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "mac": "A1B2C3D4E5F60708",
+          "algorithm": "ANSI_X9_19",
+          "keyIdentifier": "MAC_KEY_001"
+        }
+      },
+      {
+        "name": "MAC Verification Success",
+        "description": "Verify correct MAC for message",
+        "request": {
+          "message": "0200B220000000100000000000001000000000000001234567890123456000000001270000912341025123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890",
+          "mac": "A1B2C3D4E5F60708",
+          "key": "0123456789ABCDEF0123456789ABCDEF",
+          "algorithm": "ANSI_X9_19"
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "verificationResult": true,
+          "message": "MAC verification successful"
+        }
+      },
+      {
+        "name": "MAC Verification Failure",
+        "description": "Verify incorrect MAC for message",
+        "request": {
+          "message": "0200B220000000100000000000001000000000000001234567890123456000000001270000912341025123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890",
+          "mac": "FFFFFFFFFFFFFFFF",
+          "key": "0123456789ABCDEF0123456789ABCDEF",
+          "algorithm": "ANSI_X9_19"
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "verificationResult": false,
+          "message": "MAC verification failed"
+        }
+      },
+      {
+        "name": "MAC Update with Field Change",
+        "description": "Update MAC when specific fields change",
+        "request": {
+          "originalMessage": "0200B220000000100000000000001000000000000001234567890123456000000001270000912341025",
+          "originalMac": "A1B2C3D4E5F60708",
+          "changedMessage": "0200B220000000100000000000001000000000000001234567890123456000000002570000912341025",
+          "key": "0123456789ABCDEF0123456789ABCDEF",
+          "algorithm": "ANSI_X9_19",
+          "changedFields": ["de_4"]
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "newMac": "B2C3D4E5F6070809",
+          "changedFields": ["de_4"],
+          "originalAmount": "00000000127000",
+          "newAmount": "00000000257000"
+        }
+      }
+    ],
+    "keyManagement": [
+      {
+        "name": "Generate ZPK Key",
+        "description": "Generate Zone PIN Key for PIN operations",
+        "request": {
+          "keyType": "ZPK",
+          "algorithm": "DESede",
+          "keyLength": 192
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "keyIdentifier": "ZPK_002",
+          "keyType": "ZPK",
+          "algorithm": "DESede",
+          "keyLength": 192,
+          "keyValue": "ENCRYPTED_KEY_VALUE",
+          "checksum": "KEY_CHECKSUM_VALUE"
+        }
+      },
+      {
+        "name": "Generate ZAK Key",
+        "description": "Generate Zone Authentication Key for MAC operations",
+        "request": {
+          "keyType": "ZAK",
+          "algorithm": "DESede",
+          "keyLength": 192
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "keyIdentifier": "ZAK_002",
+          "keyType": "ZAK",
+          "algorithm": "DESede",
+          "keyLength": 192,
+          "keyValue": "ENCRYPTED_KEY_VALUE",
+          "checksum": "KEY_CHECKSUM_VALUE"
+        }
+      },
+      {
+        "name": "Key Exchange Success",
+        "description": "Successfully exchange session key between systems",
+        "request": {
+          "keyType": "ZPK",
+          "targetSystem": "ACQUIRER",
+          "kekIdentifier": "ZMK_001",
+          "keyData": "WRAPPED_KEY_DATA"
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "exchangeId": "EXCHANGE_001",
+          "keyIdentifier": "ZPK_003",
+          "targetSystem": "ACQUIRER",
+          "wrappedKey": "WRAPPED_KEY_FOR_TRANSPORT",
+          "verificationCode": "VERIFICATION_CODE_123"
+        }
+      },
+      {
+        "name": "Key Rotation",
+        "description": "Rotate existing key to new version",
+        "request": {
+          "keyIdentifier": "ZPK_001",
+          "newKeyData": "NEW_WRAPPED_KEY",
+          "rotationReason": "SCHEDULED_ROTATION"
+        },
+        "expectedResult": {
+          "status": "SUCCESS",
+          "oldKeyId": "ZPK_001",
+          "newKeyId": "ZPK_001_V2",
+          "rotationReason": "SCHEDULED_ROTATION",
+          "effectiveDate": "2025-10-21T10:00:00Z"
+        }
+      }
+    ],
+    "integrationTests": [
+      {
+        "name": "End-to-End Secure Payment",
+        "description": "Complete payment flow with PIN and MAC security",
+        "steps": [
+          {
+            "step": 1,
+            "action": "Generate PIN Block",
+            "request": {
+              "pin": "123456",
+              "pan": "4111111111111111",
+              "format": 0
+            }
+          },
+          {
+            "step": 2,
+            "action": "Generate MAC for Message",
+            "request": {
+              "message": "ISO8583_MESSAGE_WITH_PIN_BLOCK",
+              "key": "ZPK_001"
+            }
+          },
+          {
+            "step": 3,
+            "action": "Process Payment",
+            "request": {
+              "transactionId": "SECURE_TXN_001",
+              "billId": "TEST001",
+              "pinBlock": "GENERATED_PIN_BLOCK",
+              "mac": "GENERATED_MAC"
+            }
+          },
+          {
+            "step": 4,
+            "action": "Verify PIN at Billing",
+            "request": {
+              "pinBlock": "RECEIVED_PIN_BLOCK",
+              "pan": "4111111111111111",
+              "pin": "123456"
+            }
+          },
+          {
+            "step": 5,
+            "action": "Verify MAC at Billing",
+            "request": {
+              "message": "RECEIVED_MESSAGE",
+              "mac": "RECEIVED_MAC",
+              "key": "ZPK_001"
+            }
+          }
+        ],
+        "expectedResult": {
+          "status": "SUCCESS",
+          "transactionId": "SECURE_TXN_001",
+          "paymentStatus": "COMPLETED",
+          "pinVerified": true,
+          "macVerified": true,
+          "securityLevel": "HIGH"
+        }
+      },
+      {
+        "name": "Security Audit Trail",
+        "description": "Verify all security operations are properly audited",
+        "expectedAuditEntries": [
+          {
+            "operationType": "PIN_ENCRYPT",
+            "module": "ACQUIRER",
+            "status": "SUCCESS"
+          },
+          {
+            "operationType": "MAC_GENERATE",
+            "module": "ACQUIRER",
+            "status": "SUCCESS"
+          },
+          {
+            "operationType": "PIN_VERIFY",
+            "module": "BILLING",
+            "status": "SUCCESS"
+          },
+          {
+            "operationType": "MAC_VERIFY",
+            "module": "BILLING",
+            "status": "SUCCESS"
+          }
+        ]
+      }
+    ],
+    "errorScenarios": [
+      {
+        "name": "Invalid PIN Block Format",
+        "description": "Test error handling for invalid PIN block format",
+        "request": {
+          "pinBlock": "INVALID_FORMAT",
+          "pan": "4111111111111111",
+          "pin": "123456",
+          "format": 99
+        },
+        "expectedResult": {
+          "status": "ERROR",
+          "errorCode": "INVALID_PIN_FORMAT",
+          "message": "Unsupported PIN block format"
+        }
+      },
+      {
+        "name": "MAC Key Not Found",
+        "description": "Test error handling when MAC key is not available",
+        "request": {
+          "message": "TEST_MESSAGE",
+          "mac": "TEST_MAC",
+          "key": "NON_EXISTENT_KEY"
+        },
+        "expectedResult": {
+          "status": "ERROR",
+          "errorCode": "KEY_NOT_FOUND",
+          "message": "MAC key not found"
+        }
+      },
+      {
+        "name": "Expired Key Usage",
+        "description": "Test error handling when using expired keys",
+        "request": {
+          "keyIdentifier": "EXPIRED_KEY_001",
+          "operation": "ENCRYPT"
+        },
+        "expectedResult": {
+          "status": "ERROR",
+          "errorCode": "KEY_EXPIRED",
+          "message": "Key has expired"
+        }
+      }
+    ],
+    "performanceTests": [
+      {
+        "name": "PIN Operation Performance",
+        "description": "Test PIN operation response times",
+        "loadTest": {
+          "concurrentUsers": 10,
+          "requestsPerSecond": 100,
+          "duration": "60s"
+        },
+        "expectedResults": {
+          "avgResponseTime": "< 100ms",
+          "p95ResponseTime": "< 200ms",
+          "p99ResponseTime": "< 500ms",
+          "errorRate": "< 1%"
+        }
+      },
+      {
+        "name": "MAC Operation Performance",
+        "description": "Test MAC operation response times",
+        "loadTest": {
+          "concurrentUsers": 20,
+          "requestsPerSecond": 200,
+          "duration": "60s"
+        },
+        "expectedResults": {
+          "avgResponseTime": "< 50ms",
+          "p95ResponseTime": "< 100ms",
+          "p99ResponseTime": "< 200ms",
+          "errorRate": "< 0.5%"
+        }
+      }
+    ]
+  }
+}

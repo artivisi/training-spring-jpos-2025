@@ -1,0 +1,11 @@
+{
+  "keyType": "ZPK",
+  "sourceSystem": "GATEWAY",
+  "targetSystem": "ACQUIRER",
+  "wrappedKey": "ENCRYPTED_KEY_PLACEHOLDER",
+  "kekIdentifier": "ZMK_001",
+  "protocolVersion": "1.0",
+  "description": "Session key distribution from Gateway to Acquirer",
+  "expiresInHours": 24,
+  "transactionId": "KEY_EXCHANGE_001"
+}

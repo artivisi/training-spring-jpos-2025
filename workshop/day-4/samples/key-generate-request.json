@@ -1,0 +1,8 @@
+{
+  "keyType": "ZPK",
+  "algorithm": "DESede",
+  "keyLength": 192,
+  "description": "Zone PIN Key for PIN encryption operations",
+  "expiresInDays": 90,
+  "transactionId": "KEY_GEN_001"
+}

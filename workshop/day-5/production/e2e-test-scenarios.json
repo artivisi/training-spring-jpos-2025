@@ -1,0 +1,532 @@
+{
+  "endToEndTestScenarios": {
+    "normalFlow": [
+      {
+        "name": "Complete Payment Flow Success",
+        "description": "End-to-end successful payment with all services healthy",
+        "steps": [
+          {
+            "step": 1,
+            "action": "Send Payment Request",
+            "endpoint": "http://localhost:8080/api/v1/payment/request",
+            "method": "POST",
+            "payload": {
+              "billId": "TEST001",
+              "customerId": "TEST001",
+              "amount": 127000.00,
+              "currency": "IDR",
+              "pin": "123456",
+              "cardNumber": "4111111111111111",
+              "customerEmail": "e2e@test.com"
+            },
+            "expectedResponse": {
+              "status": 202,
+              "transactionId": "TXN_E2E_001",
+              "status": "PENDING"
+            }
+          },
+          {
+            "step": 2,
+            "action": "Verify Transaction Processing",
+            "endpoint": "http://localhost:8080/api/v1/payment/status/TXN_E2E_001",
+            "method": "GET",
+            "expectedResponse": {
+              "status": 200,
+              "transactionStatus": "SUCCESS",
+              "responseCode": "00"
+            },
+            "maxWaitTime": 30000
+          },
+          {
+            "step": 3,
+            "action": "Verify Bill Status",
+            "endpoint": "http://localhost:8082/api/v1/bill/status/TEST001",
+            "method": "GET",
+            "expectedResponse": {
+              "status": 200,
+              "billStatus": "PAID"
+            }
+          }
+        ],
+        "assertions": [
+          "All services return 2xx status codes",
+          "Transaction completes within 30 seconds",
+          "Bill status updated to PAID",
+          "Security audit logs created",
+          "No errors in system logs"
+        ]
+      }
+    ],
+    "resiliencyTests": [
+      {
+        "name": "Gateway Service Unavailable",
+        "description": "Test store-and-forward when gateway is down",
+        "steps": [
+          {
+            "step": 1,
+            "action": "Stop Gateway Service",
+            "command": "docker stop payment-gateway",
+            "waitTime": 5000
+          },
+          {
+            "step": 2,
+            "action": "Send Payment Request",
+            "endpoint": "http://localhost:8080/api/v1/payment/request",
+            "method": "POST",
+            "payload": {
+              "billId": "RESILIENCE001",
+              "customerId": "TEST001",
+              "amount": 100000.00
+            },
+            "expectedResponse": {
+              "status": 202,
+              "transactionId": "TXN_RES_001",
+              "status": "PENDING",
+              "message": "Transaction queued for processing"
+            }
+          },
+          {
+            "step": 3,
+            "action": "Verify Queue Storage",
+            "query": "SELECT * FROM transaction_queue WHERE transaction_id = 'TXN_RES_001'",
+            "expectedResult": {
+              "queueStatus": "PENDING",
+              "retryCount": 0,
+              "serviceType": "ACQUIRER"
+            }
+          },
+          {
+            "step": 4,
+            "action": "Restart Gateway Service",
+            "command": "docker start payment-gateway",
+            "waitTime": 10000
+          },
+          {
+            "step": 5,
+            "action": "Verify Queue Processing",
+            "endpoint": "http://localhost:8080/api/v1/payment/status/TXN_RES_001",
+            "method": "GET",
+            "expectedResponse": {
+              "status": 200,
+              "transactionStatus": "SUCCESS"
+            },
+            "maxWaitTime": 45000
+          }
+        ],
+        "assertions": [
+          "Transaction stored in queue when gateway down",
+          "Transaction processed automatically after recovery",
+          "No data loss during service outage",
+          "Queue processing completes within expected time"
+        ]
+      },
+      {
+        "name": "Network Timeout Scenario",
+        "description": "Test retry mechanism with simulated network timeouts",
+        "setup": {
+          "action": "Configure Gateway with High Latency",
+          "config": {
+            "connectionTimeout": 5000,
+            "socketTimeout": 3000,
+            "maxRetries": 3
+          }
+        },
+        "steps": [
+          {
+            "step": 1,
+            "action": "Inject Network Latency",
+            "command": "tc qdisc add dev docker0 root netem delay 8000ms",
+            "waitTime": 2000
+          },
+          {
+            "step": 2,
+            "action": "Send Payment Request",
+            "endpoint": "http://localhost:8080/api/v1/payment/request",
+            "method": "POST",
+            "payload": {
+              "billId": "TIMEOUT001",
+              "customerId": "TEST002",
+              "amount": 85000.00
+            },
+            "expectedResponse": {
+              "status": 202,
+              "transactionId": "TXN_TO_001",
+              "status": "PENDING"
+            }
+          },
+          {
+            "step": 3,
+            "action": "Wait for Retry Attempts",
+            "waitTime": 45000
+          },
+          {
+            "step": 4,
+            "action": "Check Retry History",
+            "query": "SELECT retry_count, last_attempt_at FROM transaction_queue WHERE transaction_id = 'TXN_TO_001'",
+            "expectedResult": {
+              "retryCount": "> 0",
+              "lastAttemptAt": "recent"
+            }
+          },
+          {
+            "step": 5,
+            "action": "Remove Network Latency",
+            "command": "tc qdisc del dev docker0 root",
+            "waitTime": 2000
+          },
+          {
+            "step": 6,
+            "action": "Verify Final Status",
+            "endpoint": "http://localhost:8080/api/v1/payment/status/TXN_TO_001",
+            "method": "GET",
+            "expectedResponse": {
+              "status": 200,
+              "transactionStatus": "SUCCESS"
+            },
+            "maxWaitTime": 30000
+          }
+        ],
+        "assertions": [
+          "Retry mechanism activated correctly",
+          "Exponential backoff implemented",
+          "Transaction succeeds after network recovery",
+          "Retry attempts logged properly"
+        ]
+      },
+      {
+        "name": "Circuit Breaker Activation",
+        "description": "Test circuit breaker pattern under high failure rate",
+        "steps": [
+          {
+            "step": 1,
+            "action": "Configure Billing Service for High Failure Rate",
+            "setup": {
+              "failureRate": 80,
+              "circuitBreakerThreshold": 5
+            }
+          },
+          {
+            "step": 2,
+            "action": "Send Multiple Requests to Trigger Circuit Breaker",
+            "parallelRequests": 10,
+            "endpoint": "http://localhost:8080/api/v1/payment/request",
+            "method": "POST",
+            "payload": {
+              "billId": "CB_TEST_XX",
+              "customerId": "TEST003",
+              "amount": 50000.00
+            }
+          },
+          {
+            "step": 3,
+            "action": "Verify Circuit Breaker Status",
+            "endpoint": "http://localhost:8081/actuator/circuitbreakers",
+            "method": "GET",
+            "expectedResponse": {
+              "billingService": {
+                "state": "OPEN",
+                "failureCount": ">= 5"
+              }
+            }
+          },
+          {
+            "step": 4,
+            "action": "Send Additional Request",
+            "endpoint": "http://localhost:8080/api/v1/payment/request",
+            "method": "POST",
+            "payload": {
+              "billId": "CB_BLOCKED",
+              "customerId": "TEST004",
+              "amount": 75000.00
+            },
+            "expectedResponse": {
+              "status": 503,
+              "message": "Service Unavailable - Circuit Breaker Open"
+            }
+          },
+          {
+            "step": 5,
+            "action": "Wait for Circuit Breaker Timeout",
+            "waitTime": 65000
+          },
+          {
+            "step": 6,
+            "action": "Verify Circuit Breaker Recovery",
+            "endpoint": "http://localhost:8081/actuator/circuitbreakers",
+            "method": "GET",
+            "expectedResponse": {
+              "billingService": {
+                "state": "HALF_OPEN"
+              }
+            }
+          }
+        ],
+        "assertions": [
+          "Circuit breaker opens after failure threshold",
+          "Requests immediately rejected when circuit open",
+          "Circuit transitions to half-open after timeout",
+          "Service recovery handled gracefully"
+        ]
+      }
+    ],
+    "securityTests": [
+      {
+        "name": "PIN Security End-to-End",
+        "description": "Verify PIN encryption and verification flow",
+        "steps": [
+          {
+            "step": 1,
+            "action": "Send Secure Payment Request",
+            "endpoint": "http://localhost:8080/api/v1/payment/secure",
+            "method": "POST",
+            "payload": {
+              "billId": "SECURE001",
+              "customerId": "TEST005",
+              "amount": 150000.00,
+              "pin": "987654",
+              "cardNumber": "5555555555554444"
+            },
+            "expectedResponse": {
+              "status": 202,
+              "transactionId": "TXN_SECURE_001",
+              "status": "PENDING"
+            }
+          },
+          {
+            "step": 2,
+            "action": "Verify PIN Block Generation",
+            "query": "SELECT * FROM pin_block_store WHERE transaction_id = 'TXN_SECURE_001'",
+            "expectedResult": {
+              "pinBlock": "not_null",
+              "pinFormat": 0,
+              "status": "ACTIVE"
+            }
+          },
+          {
+            "step": 3,
+            "action": "Verify MAC Generation",
+            "query": "SELECT * FROM mac_validation_log WHERE transaction_id = 'TXN_SECURE_001'",
+            "expectedResult": {
+              "validationResult": "VALID",
+              "algorithm": "ANSI_X9_19"
+            }
+          },
+          {
+            "step": 4,
+            "action": "Verify Security Audit Trail",
+            "query": "SELECT * FROM security_audit_log WHERE transaction_id = 'TXN_SECURE_001'",
+            "expectedResult": {
+              "operations": ["PIN_ENCRYPT", "MAC_GENERATE", "PIN_VERIFY", "MAC_VERIFY"],
+              "allStatus": "SUCCESS"
+            }
+          }
+        ],
+        "assertions": [
+          "PIN encrypted properly before transmission",
+          "MAC generated for message integrity",
+          "All security operations audited",
+          "No plaintext PIN stored in database"
+        ]
+      }
+    ],
+    "performanceTests": [
+      {
+        "name": "Load Test - Normal Load",
+        "description": "Test system performance under normal load",
+        "configuration": {
+          "concurrentUsers": 50,
+          "duration": "10m",
+          "rampUp": "2m",
+          "requestsPerSecond": 100
+        },
+        "scenarios": [
+          {
+            "weight": 70,
+            "name": "Normal Payment Flow",
+            "requests": [
+              {
+                "endpoint": "/api/v1/payment/request",
+                "method": "POST",
+                "payload": {
+                  "billId": "LOAD_TEST_XX",
+                  "customerId": "USER_XX",
+                  "amount": "{{randomAmount(50000,200000)}}"
+                }
+              }
+            ]
+          },
+          {
+            "weight": 20,
+            "name": "Status Check",
+            "requests": [
+              {
+                "endpoint": "/api/v1/payment/status/{{transactionId}}",
+                "method": "GET"
+              }
+            ]
+          },
+          {
+            "weight": 10,
+            "name": "Health Check",
+            "requests": [
+              {
+                "endpoint": "/api/v1/health",
+                "method": "GET"
+              }
+            ]
+          }
+        ],
+        "expectedResults": {
+          "avgResponseTime": "< 2s",
+          "p95ResponseTime": "< 5s",
+          "p99ResponseTime": "< 10s",
+          "errorRate": "< 1%",
+          "throughput": "> 100 tps",
+          "cpuUsage": "< 80%",
+          "memoryUsage": "< 85%"
+        }
+      },
+      {
+        "name": "Stress Test - High Load",
+        "description": "Test system behavior under extreme load",
+        "configuration": {
+          "concurrentUsers": 200,
+          "duration": "15m",
+          "rampUp": "5m",
+          "requestsPerSecond": 500
+        },
+        "expectedResults": {
+          "systemStability": "No crashes",
+          "errorRate": "< 5%",
+          "responseTimeDegradation": "< 50%",
+          "resourceUsage": "No memory leaks",
+          "queueProcessing": "No backlog accumulation"
+        }
+      },
+      {
+        "name": "Endurance Test - Sustained Load",
+        "description": "Test system stability over extended period",
+        "configuration": {
+          "concurrentUsers": 100,
+          "duration": "2h",
+          "rampUp": "10m",
+          "requestsPerSecond": 200
+        },
+        "expectedResults": {
+          "noMemoryLeaks": "Memory usage stable",
+          "noPerformanceDegradation": "Response times consistent",
+          "resourceUtilization": "Stable CPU/Memory usage",
+          "errorRateStability": "Error rate doesn't increase over time",
+          "queueStability": "No queue backlog growth"
+        }
+      }
+    ],
+    "chaosEngineering": [
+      {
+        "name": "Network Partition Test",
+        "description": "Test system behavior when network partitions occur",
+        "chaos": {
+          "type": "network_partition",
+          "target": "billing-service",
+          "duration": "5m",
+          "probability": 100
+        },
+        "expectedBehavior": {
+          "queueActivation": "Transactions stored in queue",
+          "circuitBreaker": "Opens after threshold",
+          "recovery": "Automatic processing after recovery",
+          "dataConsistency": "No transaction loss"
+        }
+      },
+      {
+        "name": "Database Connection Failure",
+        "description": "Test system resilience to database failures",
+        "chaos": {
+          "type": "database_failure",
+          "target": "postgres",
+          "duration": "3m",
+          "probability": 100
+        },
+        "expectedBehavior": {
+          "circuitBreaker": "Database circuit breaker opens",
+          "errorHandling": "Appropriate error responses",
+          "recovery": "Graceful recovery after restoration",
+          "dataIntegrity": "No data corruption"
+        }
+      },
+      {
+        "name": "Resource Exhaustion",
+        "description": "Test system under resource constraints",
+        "chaos": {
+          "type": "cpu_stress",
+          "target": "gateway-service",
+          "duration": "10m",
+          "cpuLoad": 80
+        },
+        "expectedBehavior": {
+          "performanceDegradation": "Slower but functional",
+          "loadShedding": "Non-critical requests rejected",
+          "recovery": "Full recovery after stress removal",
+          "monitoring": "Alerts generated appropriately"
+        }
+      }
+    ],
+    "monitoringValidation": [
+      {
+        "name": "Metrics Collection Validation",
+        "description": "Verify all metrics are properly collected",
+        "checks": [
+          {
+            "metric": "http_requests_total",
+            "source": "all_services",
+            "expected": "incrementing correctly"
+          },
+          {
+            "metric": "http_request_duration_seconds",
+            "source": "all_services",
+            "expected": "histogram buckets populated"
+          },
+          {
+            "metric": "jvm_memory_used_bytes",
+            "source": "all_services",
+            "expected": "reasonable memory usage"
+          },
+          {
+            "metric": "payment_transactions_total",
+            "source": "gateway-service",
+            "expected": "business metrics tracked"
+          },
+          {
+            "metric": "queue_size",
+            "source": "all_services",
+            "expected": "queue metrics available"
+          }
+        ]
+      },
+      {
+        "name": "Alerting Validation",
+        "description": "Verify alerts are triggered appropriately",
+        "alerts": [
+          {
+            "name": "HighErrorRate",
+            "condition": "error_rate > 5%",
+            "trigger": "During load test with induced errors",
+            "expected": "Alert fired and notification sent"
+          },
+          {
+            "name": "HighResponseTime",
+            "condition": "p95_response_time > 5s",
+            "trigger": "During stress test",
+            "expected": "Alert fired and dashboard highlighted"
+          },
+          {
+            "name": "ServiceDown",
+            "condition": "service_health != 'UP'",
+            "trigger": "Service stopped during chaos test",
+            "expected": "Immediate alert and notification"
+          }
+        ]
+      }
+    ]
+  }
+}

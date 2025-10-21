@@ -1,0 +1,225 @@
+{
+  "testScenarios": {
+    "happyPath": [
+      {
+        "name": "Successful Bill Payment",
+        "request": {
+          "billId": "TEST001",
+          "customerId": "TEST001",
+          "amount": 127000.00,
+          "currency": "IDR",
+          "customerEmail": "test1@example.com"
+        },
+        "expectedResponse": {
+          "status": "SUCCESS",
+          "responseCode": "00",
+          "billStatus": "PAID"
+        }
+      },
+      {
+        "name": "High Value Bill Payment",
+        "request": {
+          "billId": "TEST003",
+          "customerId": "TEST003",
+          "amount": 303000.00,
+          "currency": "IDR",
+          "customerEmail": "test3@example.com"
+        },
+        "expectedResponse": {
+          "status": "SUCCESS",
+          "responseCode": "00",
+          "billStatus": "PAID"
+        }
+      }
+    ],
+    "errorScenarios": [
+      {
+        "name": "Already Paid Bill",
+        "request": {
+          "billId": "ERROR001",
+          "customerId": "TEST001",
+          "amount": 102000.00,
+          "currency": "IDR"
+        },
+        "expectedResponse": {
+          "status": "FAILED",
+          "responseCode": "14",
+          "message": "Invalid bill number"
+        }
+      },
+      {
+        "name": "Expired Bill",
+        "request": {
+          "billId": "ERROR002",
+          "customerId": "TEST002",
+          "amount": 76500.00,
+          "currency": "IDR"
+        },
+        "expectedResponse": {
+          "status": "FAILED",
+          "responseCode": "54",
+          "message": "Expired card"
+        }
+      },
+      {
+        "name": "Invalid Customer",
+        "request": {
+          "billId": "ERROR003",
+          "customerId": "WRONG_CUSTOMER",
+          "amount": 203000.00,
+          "currency": "IDR"
+        },
+        "expectedResponse": {
+          "status": "FAILED",
+          "responseCode": "14",
+          "message": "Invalid bill number"
+        }
+      },
+      {
+        "name": "Bill Not Found",
+        "request": {
+          "billId": "NOT_FOUND",
+          "customerId": "TEST001",
+          "amount": 100000.00,
+          "currency": "IDR"
+        },
+        "expectedResponse": {
+          "status": "FAILED",
+          "responseCode": "14",
+          "message": "Invalid bill number"
+        }
+      }
+    ],
+    "edgeCases": [
+      {
+        "name": "Minimum Amount",
+        "request": {
+          "billId": "EDGE001",
+          "customerId": "EDGE001",
+          "amount": 0.01,
+          "currency": "IDR"
+        },
+        "expectedResponse": {
+          "status": "SUCCESS",
+          "responseCode": "00"
+        }
+      },
+      {
+        "name": "Maximum Amount",
+        "request": {
+          "billId": "EDGE002",
+          "customerId": "EDGE002",
+          "amount": 1009999.99,
+          "currency": "IDR"
+        },
+        "expectedResponse": {
+          "status": "SUCCESS",
+          "responseCode": "00"
+        }
+      },
+      {
+        "name": "Zero Fee Bill",
+        "request": {
+          "billId": "EDGE003",
+          "customerId": "EDGE003",
+          "amount": 100000.00,
+          "currency": "IDR"
+        },
+        "expectedResponse": {
+          "status": "SUCCESS",
+          "responseCode": "00"
+        }
+      }
+    ],
+    "concurrencyTests": [
+      {
+        "name": "Duplicate Transaction",
+        "description": "Same transaction ID sent twice",
+        "requests": [
+          {
+            "transactionId": "DUP001",
+            "billId": "TEST001",
+            "customerId": "TEST001",
+            "amount": 127000.00
+          },
+          {
+            "transactionId": "DUP001",
+            "billId": "TEST001",
+            "customerId": "TEST001",
+            "amount": 127000.00
+          }
+        ],
+        "expectedBehavior": "Second request should return same response as first"
+      },
+      {
+        "name": "Concurrent Bill Payment",
+        "description": "Same bill paid by different customers simultaneously",
+        "requests": [
+          {
+            "transactionId": "CONC001",
+            "billId": "TEST002",
+            "customerId": "TEST002",
+            "amount": 86500.00
+          },
+          {
+            "transactionId": "CONC002",
+            "billId": "TEST002",
+            "customerId": "TEST002",
+            "amount": 86500.00
+          }
+        ],
+        "expectedBehavior": "Only one transaction should succeed, other should fail"
+      }
+    ],
+    "timeoutTests": [
+      {
+        "name": "Network Timeout Simulation",
+        "description": "Simulate slow billing provider response",
+        "setup": {
+          "billingProviderDelay": "45s"
+        },
+        "request": {
+          "billId": "TEST004",
+          "customerId": "TEST004",
+          "amount": 157500.00
+        },
+        "expectedBehavior": "Transaction should timeout and be marked as TIMEOUT"
+      }
+    ]
+  },
+  "fieldMappingTests": {
+    "jsonToIso": [
+      {
+        "name": "Basic Field Mapping",
+        "input": {
+          "billId": "TEST001",
+          "customerId": "TEST001",
+          "amount": 127000.00,
+          "currency": "IDR",
+          "transactionId": "TXN001"
+        },
+        "expectedIsoFields": {
+          "DE_4": "00000000127000",
+          "DE_11": "TXN001",
+          "DE_48": "TEST001TEST001",
+          "DE_49": "360"
+        }
+      }
+    ],
+    "isoToJson": [
+      {
+        "name": "Response Mapping",
+        "input": {
+          "DE_39": "00",
+          "DE_11": "TXN001",
+          "DE_38": "123456"
+        },
+        "expectedJson": {
+          "responseCode": "00",
+          "transactionId": "TXN001",
+          "authorizationId": "123456"
+        }
+      }
+    ]
+  }
+}
