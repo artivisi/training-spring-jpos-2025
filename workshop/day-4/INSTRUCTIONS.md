@@ -1,15 +1,15 @@
-# Hari 4 – HSM Simulation, PIN, MAC & Key Exchange
+# Hari 4 – Simulasi HSM, PIN, MAC & Key Exchange
 
 ## Tujuan
-- Implementasi HSM simulator untuk cryptographic operations
-- PIN block management (generation, encryption, verification)
-- MAC generation dan verification untuk message integrity
-- Key exchange mechanisms untuk secure communication
+- Implementasi simulator HSM untuk operasi cryptographic
+- Manajemen PIN block (generasi, enkripsi, verifikasi)
+- Generasi dan verifikasi MAC untuk integritas pesan
+- Mekanisme key exchange untuk komunikasi aman
 - Integrasi HSM ke alur pembayaran
 
-## 1. HSM Simulator Architecture
+## 1. Arsitektur Simulator HSM
 
-### 1.1 HSM Simulator Design
+### 1.1 Desain Simulator HSM
 ```mermaid
 graph TB
     subgraph "HSM Simulator :8083"
@@ -19,7 +19,7 @@ graph TB
         H4[Security Module]
     end
 
-    subgraph "Main Applications"
+    subgraph "Aplikasi Utama"
         A[Acquirer :8080]
         G[Gateway :8081]
         B[Billing :8082]
@@ -39,17 +39,17 @@ graph TB
     style H4 fill:#fff3e0
 ```
 
-### 1.2 HSM Service Architecture
+### 1.2 Arsitektur Layanan HSM
 ```mermaid
 graph LR
-    subgraph "HSM Services"
+    subgraph "Layanan HSM"
         A[PIN Services]
         B[MAC Services]
         C[Key Management]
         D[Random Generation]
     end
 
-    subgraph "Cryptographic Operations"
+    subgraph "Operasi Cryptographic"
         E[DES/3DES Encryption]
         F[AES Operations]
         G[Hash Functions]
@@ -68,9 +68,9 @@ graph LR
     style D fill:#e8f5e8
 ```
 
-## 2. PIN Block Management
+## 2. Manajemen PIN Block
 
-### 2.1 PIN Block Flow
+### 2.1 Alur PIN Block
 ```mermaid
 sequenceDiagram
     participant Client
@@ -96,40 +96,40 @@ sequenceDiagram
     Billing->>Client: Payment Response
 ```
 
-### 2.2 PIN Block Formats
-**Participants will implement:**
-- **Format 0**: ANSI X9.8 PIN block format
-- **Format 3**: ISO 9564-1 Format 3 PIN block
-- **Format 4**: ISO 9564-1 Format 4 PIN block
+### 2.2 Format PIN Block
+**Peserta akan mengimplementasikan:**
+- **Format 0**: Format PIN block ANSI X9.8
+- **Format 3**: Format PIN block ISO 9564-1 Format 3
+- **Format 4**: Format PIN block ISO 9564-1 Format 4
 
-### 2.3 PIN Block Implementation Tasks
+### 2.3 Tugas Implementasi PIN Block
 ```java
-// Participants will implement:
+// Peserta akan mengimplementasikan:
 public class PinBlockService {
-    // Generate PIN block from customer PIN
+    // Generate PIN block dari customer PIN
     public String encryptPinBlock(String pin, String pan);
 
-    // Verify PIN block against customer PIN
+    // Verify PIN block terhadap customer PIN
     public boolean verifyPinBlock(String pinBlock, String pan, String pin);
 
-    // Convert between PIN block formats
+    // Konversi antar format PIN block
     public String convertPinBlockFormat(String pinBlock, int fromFormat, int toFormat);
 }
 ```
 
-## 3. MAC Generation & Verification
+## 3. Generasi & Verifikasi MAC
 
-### 3.1 MAC Flow Architecture
+### 3.1 Arsitektur Alur MAC
 ```mermaid
 graph TB
-    subgraph "MAC Generation"
+    subgraph "Generasi MAC"
         A1[Original Message]
         A2[Calculate MAC]
         A3[Append MAC in DE 128]
         A4[Transmit Message]
     end
 
-    subgraph "MAC Verification"
+    subgraph "Verifikasi MAC"
         B1[Received Message]
         B2[Extract MAC]
         B3[Calculate MAC]
@@ -151,31 +151,31 @@ graph TB
     style B4 fill:#e8f5e8
 ```
 
-### 3.2 MAC Algorithm Implementation
-**Participants will implement ANSI X9.19 MAC algorithm:**
-- **Block cipher DES** for MAC calculation
-- **CBC mode** for chaining blocks
-- **Padding handling** for incomplete blocks
-- **Key management** for MAC keys
+### 3.2 Implementasi Algoritma MAC
+**Peserta akan mengimplementasikan algoritma MAC ANSI X9.19:**
+- **Block cipher DES** untuk perhitungan MAC
+- **CBC mode** untuk chaining blocks
+- **Padding handling** untuk block yang tidak lengkap
+- **Key management** untuk MAC keys
 
-### 3.3 MAC Service Integration
+### 3.3 Integrasi Layanan MAC
 ```java
-// Participants will implement:
+// Peserta akan mengimplementasikan:
 public class MacService {
-    // Generate MAC for ISO-8583 message
+    // Generate MAC untuk pesan ISO-8583
     public String generateMac(String message, String macKey);
 
-    // Verify MAC for received message
+    // Verify MAC untuk pesan yang diterima
     public boolean verifyMac(String message, String mac, String macKey);
 
-    // Update MAC when fields change
+    // Update MAC ketika fields berubah
     public String updateMac(String message, String mac, String macKey, String... changedFields);
 }
 ```
 
-## 4. Key Exchange Implementation
+## 4. Implementasi Key Exchange
 
-### 4.1 Key Exchange Flow
+### 4.1 Alur Key Exchange
 ```mermaid
 sequenceDiagram
     participant Gateway
@@ -203,20 +203,20 @@ sequenceDiagram
     Note over Billing,Acquirer: End-to-end security
 ```
 
-### 4.2 Key Types and Management
-**Key Types to Implement:**
-- **ZMK (Zone Master Key)**: Master key for key distribution
-- **ZPK (Zone PIN Key)**: For PIN block encryption/decryption
-- **ZAK (Zone Authentication Key)**: For MAC generation/verification
-- **TEK (Traffic Encryption Key)**: For message encryption
+### 4.2 Tipe Key dan Manajemen
+**Tipe Key yang Akan Diimplementasikan:**
+- **ZMK (Zone Master Key)**: Master key untuk distribusi key
+- **ZPK (Zone PIN Key)**: Untuk enkripsi/dekripsi PIN block
+- **ZAK (Zone Authentication Key)**: Untuk generasi/verifikasi MAC
+- **TEK (Traffic Encryption Key)**: Untuk enkripsi pesan
 
-### 4.3 Key Exchange Messages
-**Participants will implement ISO-8583 key exchange messages:**
+### 4.3 Pesan Key Exchange
+**Peserta akan mengimplementasikan pesan key exchange ISO-8583:**
 ```json
 {
   "keyExchangeRequest": {
     "mti": "0800",
-    "de_53": "301",  // Network management code for key exchange
+    "de_53": "301",  // Network management code untuk key exchange
     "de_48": "KEY_EXCHANGE_REQUEST_DATA",
     "de_128": "MAC_FOR_KEY_EXCHANGE"
   },
@@ -229,9 +229,9 @@ sequenceDiagram
 }
 ```
 
-## 5. HSM Service API Specification
+## 5. Spesifikasi API Layanan HSM
 
-### 5.1 PIN Operations API
+### 5.1 API Operasi PIN
 ```yaml
 # PIN Encryption
 POST /api/hsm/pin/encrypt
@@ -253,7 +253,7 @@ Content-Type: application/json
 }
 ```
 
-### 5.2 MAC Operations API
+### 5.2 API Operasi MAC
 ```yaml
 # MAC Generation
 POST /api/hsm/mac/generate
@@ -275,7 +275,7 @@ Content-Type: application/json
 }
 ```
 
-### 5.3 Key Management API
+### 5.3 API Manajemen Key
 ```yaml
 # Key Generation
 POST /api/hsm/key/generate
@@ -296,9 +296,9 @@ Content-Type: application/json
 }
 ```
 
-## 6. Security Integration Points
+## 6. Titik Integrasi Keamanan
 
-### 6.1 Acquirer Security Integration
+### 6.1 Integrasi Keamanan Acquirer
 ```mermaid
 graph TB
     subgraph "Acquirer Service"
@@ -322,26 +322,26 @@ graph TB
     style A4 fill:#e8f5e8
 ```
 
-### 6.2 Gateway Security Integration
-**Participants will implement:**
-- **Incoming MAC verification** for all messages
-- **Outgoing MAC generation** for forwarded messages
-- **Key rotation** for session management
-- **Security audit logging** for compliance
+### 6.2 Integrasi Keamanan Gateway
+**Peserta akan mengimplementasikan:**
+- **Incoming MAC verification** untuk semua pesan
+- **Outgoing MAC generation** untuk pesan yang diteruskan
+- **Key rotation** untuk manajemen sesi
+- **Security audit logging** untuk kepatuhan
 
-### 6.3 Billing Security Integration
-**Participants will implement:**
-- **PIN block verification** for debit transactions
-- **MAC verification** for message integrity
-- **Secure response generation** with MAC
+### 6.3 Integrasi Keamanan Billing
+**Peserta akan mengimplementasikan:**
+- **PIN block verification** untuk transaksi debit
+- **MAC verification** untuk integritas pesan
+- **Secure response generation** dengan MAC
 - **Transaction security audit trail**
 
-## 7. Database Schema for Security
+## 7. Schema Database untuk Keamanan
 
-### 7.1 Security Tables
-Lihat: `data/security-schema.sql`
+### 7.1 Tabel Keamanan
+Schema keamanan tersedia di: `data/security-schema.sql`
 
-### 7.2 Key Storage Schema
+### 7.2 Schema Penyimpanan Key
 ```mermaid
 erDiagram
     KEY_STORE {
@@ -377,12 +377,12 @@ erDiagram
     TRANSACTIONS ||--o{ SECURITY_AUDIT_LOG : "logs"
 ```
 
-## 8. Testing & Validation
+## 8. Pengujian & Validasi
 
-### 8.1 Security Test Scenarios
-Lihat: `security/test-scenarios.json`
+### 8.1 Skenario Pengujian Keamanan
+Skenario pengujian keamanan tersedia di: `security/test-scenarios.json`
 
-### 8.2 PIN Block Test Cases
+### 8.2 Kasus Uji PIN Block
 ```bash
 # Test PIN block generation
 curl -X POST http://localhost:8083/api/hsm/pin/encrypt \
@@ -395,7 +395,7 @@ curl -X POST http://localhost:8083/api/hsm/pin/verify \
   -d @samples/pin-verify-request.json
 ```
 
-### 8.3 MAC Test Cases
+### 8.3 Kasus Uji MAC
 ```bash
 # Test MAC generation
 curl -X POST http://localhost:8083/api/hsm/mac/generate \
@@ -408,7 +408,7 @@ curl -X POST http://localhost:8083/api/hsm/mac/verify \
   -d @samples/mac-verify-request.json
 ```
 
-### 8.4 Key Exchange Test Cases
+### 8.4 Kasus Uji Key Exchange
 ```bash
 # Test key generation
 curl -X POST http://localhost:8083/api/hsm/key/generate \
@@ -421,20 +421,20 @@ curl -X POST http://localhost:8083/api/hsm/key/exchange \
   -d @samples/key-exchange-request.json
 ```
 
-## 9. Implementation Validation
+## 9. Validasi Implementasi
 
-### 9.1 Security Validation Checklist
-- [ ] HSM simulator running on port 8083
-- [ ] PIN block generation working (all formats)
-- [ ] PIN block verification working
-- [ ] MAC generation working (ANSI X9.19)
-- [ ] MAC verification working
-- [ ] Key exchange implemented
-- [ ] Session key management working
-- [ ] Security audit logging functional
-- [ ] All security tests passing
+### 9.1 Checklist Validasi Keamanan
+- [ ] Simulator HSM berjalan pada port 8083
+- [ ] Generasi PIN block berfungsi (semua format)
+- [ ] Verifikasi PIN block berfungsi
+- [ ] Generasi MAC berfungsi (ANSI X9.19)
+- [ ] Verifikasi MAC berfungsi
+- [ ] Key exchange diimplementasikan
+- [ ] Manajemen session key berfungsi
+- [ ] Security audit logging berfungsi
+- [ ] Semua pengujian keamanan berhasil
 
-### 9.2 Integration Testing
+### 9.2 Pengujian Integrasi
 ```bash
 # Test end-to-end secure payment
 curl -X POST http://localhost:8080/api/v1/payment/secure \
@@ -446,36 +446,36 @@ docker-compose exec postgres psql -U postgres -d payment_system \
   -c "SELECT * FROM security_audit_log WHERE transaction_id = 'TXN20251021001';"
 ```
 
-### 9.3 Performance Validation
+### 9.3 Validasi Performa
 - **PIN operation response time** < 100ms
 - **MAC operation response time** < 50ms
 - **Key exchange response time** < 200ms
 - **Security audit overhead** < 5%
 
-## 10. Common Security Issues
+## 10. Masalah Keamanan Umum
 
-### 10.1 PIN Block Issues
-- **Invalid format**: Check format compatibility
-- **PAN mismatch**: Verify PAN calculation
-- **Encryption failure**: Check key availability
+### 10.1 Masalah PIN Block
+- **Invalid format**: Periksa kompatibilitas format
+- **PAN mismatch**: Verifikasi perhitungan PAN
+- **Encryption failure**: Periksa ketersediaan key
 
-### 10.2 MAC Issues
-- **Key mismatch**: Verify MAC key distribution
-- **Message alteration**: Check message formatting
-- **Algorithm error**: Verify implementation
+### 10.2 Masalah MAC
+- **Key mismatch**: Verifikasi distribusi MAC key
+- **Message alteration**: Periksa formatting pesan
+- **Algorithm error**: Verifikasi implementasi
 
-### 10.3 Key Management Issues
-- **Key expiration**: Implement key rotation
-- **Distribution failure**: Check secure channel
-- **Storage security**: Verify encryption
+### 10.3 Masalah Manajemen Key
+- **Key expiration**: Implementasi rotasi key
+- **Distribution failure**: Periksa secure channel
+- **Storage security**: Verifikasi enkripsi
 
-## 11. Next Steps
+## 11. Langkah Selanjutnya
 
 Setelah berhasil menyelesaikan Day 4:
-1. HSM simulator implemented and working
-2. PIN block management functional
-3. MAC generation/verification working
-4. Key exchange implemented
-5. Security integration complete
-6. Siapkan untuk Day 5 (Connection Resiliency & Production Readiness)
-7. Review retry mechanisms and store-and-forward patterns
+1. Simulator HSM diimplementasikan dan berfungsi
+2. Manajemen PIN block berfungsi
+3. Generasi/verifikasi MAC berfungsi
+4. Key exchange diimplementasikan
+5. Integrasi keamanan lengkap
+6. Siapkan untuk Day 5 (Ketahanan Koneksi & Kesiapan Produksi)
+7. Review mekanisme retry dan pola store-and-forward

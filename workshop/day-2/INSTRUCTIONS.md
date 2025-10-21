@@ -1,47 +1,44 @@
-# Hari 2 – JPOS Integration & ISO-8583 Basics
+# Hari 2 – Integrasi JPOS & Dasar ISO-8583
 
 ## Tujuan
-- Setup JPos Q2 server
-- Implementasi ISO-8583 message structure
-- Administrative messages (Logon, Logoff, Echo)
-- Channel management dan connection handling
+- Setup server JPos Q2
+- Implementasi struktur pesan ISO-8583
+- Pesan administratif (Logon, Logoff, Echo)
+- Manajemen channel dan penanganan koneksi
 
-## 1. JPos Setup
+## 1. Setup JPos
 
-### 1.1 Add JPos Dependencies
-```xml
-<!-- Tambahkan ke pom.xml -->
-<dependency>
-    <groupId>org.jpos</groupId>
-    <artifactId>jpos</artifactId>
-    <version>3.0.0</version>
-</dependency>
-<dependency>
-    <groupId>org.jpos</groupId>
-    <artifactId>jpos-q2</artifactId>
-    <version>3.0.0</version>
-</dependency>
-```
+### 1.1 Menambahkan Dependencies JPos
+Peserta akan menambahkan dependencies JPos ke project:
 
-### 1.2 Create Q2 Configuration Directory
+**Dependencies yang Diperlukan:**
+- `jpos` 3.0.0 - JPos core library
+- `jpos-q2` 3.0.0 - Q2 server framework
+
+**Tugas Implementasi:**
+1. Tambah dependencies ke masing-masing project POM
+2. Konfigurasi JPos version
+3. Pastikan compatibility dengan Spring Boot
+
+### 1.2 Membuat Direktori Konfigurasi Q2
 ```bash
 # Buat struktur direktori untuk Q2
 mkdir -p src/main/resources/q2
 mkdir -p src/main/resources/q2/deploy
 ```
 
-### 1.3 Q2 Properties Configuration
+### 1.3 Konfigurasi Properties Q2
 **Template**: `config/q2.properties`
 
-Participants will configure:
-- Q2 server directories
-- Logging configuration
-- ISO-8583 settings
-- Connection timeout and retry parameters
+Peserta akan mengkonfigurasi:
+- Direktori server Q2
+- Konfigurasi logging
+- Pengaturan ISO-8583
+- Parameter connection timeout dan retry
 
-## 2. ISO-8583 Message Structure
+## 2. Struktur Pesan ISO-8583
 
-### 2.1 Understanding ISO-8583 Format
+### 2.1 Memahami Format ISO-8583
 ```mermaid
 graph LR
     A[MTI<br/>4 bytes] --> B[Bitmap<br/>8 bytes]
@@ -56,7 +53,7 @@ graph LR
     style E fill:#e8f5e8
 ```
 
-### 2.2 Key Data Elements untuk Payment
+### 2.2 Data Elements Penting untuk Pembayaran
 - **MTI (Message Type Indicator)**: Tipe pesan
 - **DE 2 (PAN)**: Primary Account Number
 - **DE 3 (Processing Code)**: Jenis transaksi
@@ -67,18 +64,18 @@ graph LR
 - **DE 48 (Additional Data)**: Data tambahan (bill info)
 - **DE 128 (MAC)**: Message Authentication Code
 
-### 2.3 ISO-8583 Packager Configuration
+### 2.3 Konfigurasi Packager ISO-8583
 **Template**: `config/iso8583-packager.xml`
 
-Participants will define:
-- Data Element (DE) configurations (DE 0-128)
-- Field types (IFA_NUMERIC, IFA_LLNUM, etc)
-- Field lengths and formatting
-- Binary vs character field handling
+Peserta akan mendefinisikan:
+- Konfigurasi Data Element (DE) (DE 0-128)
+- Tipe field (IFA_NUMERIC, IFA_LLNUM, dll)
+- Panjang field dan formatting
+- Penanganan field biner vs karakter
 
-## 3. Administrative Messages
+## 3. Pesan Administratif
 
-### 3.1 Logon Message (MTI 0800)
+### 3.1 Pesan Logon (MTI 0800)
 ```mermaid
 sequenceDiagram
     participant Acquirer
@@ -108,28 +105,28 @@ sequenceDiagram
     Gateway->>Acquirer: Forward Response
 ```
 
-### 3.3 Administrative Message Configuration
-Participants will implement QBean services for:
-- **Logon (MTI 0800, DE 70 = 001)**: Network connection establishment
-- **Echo Test (MTI 0800, DE 70 = 301)**: Connection health check
-- **Logoff (MTI 0800, DE 70 = 002)**: Connection termination
-- **Network Management Responses (MTI 0810)**: Response handling
+### 3.3 Konfigurasi Pesan Administratif
+Peserta akan mengimplementasikan layanan QBean untuk:
+- **Logon (MTI 0800, DE 70 = 001)**: Pembuatan koneksi jaringan
+- **Echo Test (MTI 0800, DE 70 = 301)**: Pemeriksaan kesehatan koneksi
+- **Logoff (MTI 0800, DE 70 = 002)**: Penghentian koneksi
+- **Network Management Responses (MTI 0810)**: Penanganan respons
 
-Implementation tasks:
-- Create QBean classes for each admin message type
-- Configure message routing and response handling
-- Implement timeout and retry logic
-- Add logging for administrative operations
+Tugas implementasi:
+- Buat kelas QBean untuk setiap tipe pesan administratif
+- Konfigurasi routing pesan dan penanganan respons
+- Implementasikan timeout dan logika retry
+- Tambahkan logging untuk operasi administratif
 
-## 4. Channel Configuration
+## 4. Konfigurasi Channel
 
-### 4.1 Channel Types
-- **ChannelAdaptor**: Basic TCP connection
-- **ASCIIChannel**: Character-based communication
-- **RawChannel**: Binary message communication
-- **ChannelPool**: Multiple connections untuk load balancing
+### 4.1 Tipe Channel
+- **ChannelAdaptor**: Koneksi TCP dasar
+- **ASCIIChannel**: Komunikasi berbasis karakter
+- **RawChannel**: Komunikasi pesan biner
+- **ChannelPool**: Multiple koneksi untuk load balancing
 
-### 4.2 Connection Management
+### 4.2 Manajemen Koneksi
 ```mermaid
 graph TB
     A[Q2 Server] --> B[ChannelAdaptor]
@@ -153,33 +150,33 @@ graph TB
     style J fill:#fff3e0
 ```
 
-### 4.3 Channel Configuration Sample
-Participants will create channel configuration with:
-- **ChannelAdaptor** setup for TCP connections
-- **RawChannel** configuration for binary messaging
-- Connection properties (host, port, timeout)
-- Reconnection settings and health monitoring
-- Packager integration
+### 4.3 Contoh Konfigurasi Channel
+Peserta akan membuat konfigurasi channel dengan:
+- **Setup ChannelAdaptor** untuk koneksi TCP
+- **Konfigurasi RawChannel** untuk messaging biner
+- Properti koneksi (host, port, timeout)
+- Pengaturan rekoneksi dan monitoring kesehatan
+- Integrasi packager
 
-## 5. MUX Configuration
+## 5. Konfigurasi MUX
 
-### 5.1 MUX (Multiplexer) Setup
-- Connection pooling management
-- Request-response correlation
-- Timeout handling
-- Reconnection logic
+### 5.1 Setup MUX (Multiplexer)
+- Manajemen connection pooling
+- Korelasi request-response
+- Penanganan timeout
+- Logika rekoneksi
 
-### 5.2 MUX Configuration Sample
-Participants will implement MUX with:
-- **Connection pool management** for multiple channels
-- **Request-response correlation** with STAN tracking
-- **Timeout handling** with configurable limits
-- **Automatic reconnection** with exponential backoff
+### 5.2 Contoh Konfigurasi MUX
+Peserta akan mengimplementasikan MUX dengan:
+- **Manajemen connection pool** untuk multiple channel
+- **Korelasi request-response** dengan tracking STAN
+- **Penanganan timeout** dengan batas yang dapat dikonfigurasi
+- **Rekoneksi otomatis** dengan exponential backoff
 - **Load balancing** across available connections
 
-## 6. Implementation Testing
+## 6. Pengujian Implementasi
 
-### 6.1 Test Administrative Messages
+### 6.1 Uji Pesan Administratif
 ```bash
 # Test logon message
 curl -X POST http://localhost:8081/api/v1/admin/logon
@@ -191,7 +188,7 @@ curl -X POST http://localhost:8081/api/v1/admin/echo
 curl -X POST http://localhost:8081/api/v1/admin/logoff
 ```
 
-### 6.2 Test ISO-8583 Messages
+### 6.2 Uji Pesan ISO-8583
 ```bash
 # Send financial request
 curl -X POST http://localhost:8081/api/v1/iso/payment \
@@ -208,7 +205,7 @@ curl -X POST http://localhost:8081/api/v1/iso/payment \
   }'
 ```
 
-### 6.3 Monitor Message Flow
+### 6.3 Monitor Alur Pesan
 ```bash
 # Monitor Q2 logs
 tail -f logs/q2.log
@@ -220,9 +217,9 @@ curl http://localhost:8081/api/v1/admin/channel/status
 curl http://localhost:8081/api/v1/admin/health
 ```
 
-## 7. Sample Messages for Testing
+## 7. Contoh Pesan untuk Pengujian
 
-### 7.1 Financial Request Sample
+### 7.1 Contoh Request Financial
 ```json
 {
   "mti": "0200",
@@ -242,7 +239,7 @@ curl http://localhost:8081/api/v1/admin/health
 }
 ```
 
-### 7.2 Response Sample
+### 7.2 Contoh Respons
 ```json
 {
   "mti": "0210",
@@ -260,31 +257,31 @@ curl http://localhost:8081/api/v1/admin/health
 }
 ```
 
-## 8. Configuration Files to Create
+## 8. File Konfigurasi yang Dibuat
 
-Participants will create the following configuration files:
-- **`src/main/resources/q2/q2.properties`** - Q2 server configuration
-- **`src/main/resources/q2/deploy/channel.xml`** - Channel configuration
-- **`src/main/resources/q2/deploy/mux.xml`** - MUX configuration
-- **`src/main/resources/q2/deploy/admin-messages.xml`** - Administrative message handlers
-- **`src/main/resources/q2/iso8583-packager.xml`** - ISO-8583 field definitions
+Peserta akan membuat file konfigurasi berikut:
+- **`src/main/resources/q2/q2.properties`** - Konfigurasi server Q2
+- **`src/main/resources/q2/deploy/channel.xml`** - Konfigurasi channel
+- **`src/main/resources/q2/deploy/mux.xml`** - Konfigurasi MUX
+- **`src/main/resources/q2/deploy/admin-messages.xml`** - Handler pesan administratif
+- **`src/main/resources/q2/iso8583-packager.xml`** - Definisi field ISO-8583
 
-**Template files provided in `config/` directory** for reference.
+**File template tersedia di direktori `config/` untuk referensi.
 
-## 9. Validation Checklist
+## 9. Checklist Validasi
 
-- [ ] JPos dependencies added successfully
-- [ ] Q2 server starts without errors
-- [ ] Channel configuration loaded correctly
-- [ ] Administrative messages working (Logon/Echo/Logoff)
-- [ ] ISO-8583 packager configured
-- [ ] Message routing working
-- [ ] Connection pooling functional
-- [ ] Error handling implemented
+- [ ] Dependencies JPos berhasil ditambahkan
+- [ ] Server Q2 berjalan tanpa error
+- [ ] Konfigurasi channel dimuat dengan benar
+- [ ] Pesan administratif berfungsi (Logon/Echo/Logoff)
+- [ ] Packager ISO-8583 dikonfigurasi
+- [ ] Routing pesan berfungsi
+- [ ] Connection pooling berfungsi
+- [ ] Error handling diimplementasikan
 
-## 10. Common Issues & Solutions
+## 10. Masalah Umum & Solusi
 
-### 10.1 Q2 Startup Issues
+### 10.1 Masalah Startup Q2
 ```bash
 # Check Q2 logs
 tail -f logs/q2.log
@@ -293,7 +290,7 @@ tail -f logs/q2.log
 ls -la src/main/resources/q2/deploy/
 ```
 
-### 10.2 Connection Issues
+### 10.2 Masalah Koneksi
 ```bash
 # Check port availability
 netstat -an | grep 9010
@@ -302,16 +299,16 @@ netstat -an | grep 9010
 telnet localhost 9010
 ```
 
-### 10.3 Message Format Issues
-- Verify packager XML syntax
-- Check field definitions
-- Validate bitmap handling
+### 10.3 Masalah Format Pesan
+- Verifikasi syntax packager XML
+- Periksa definisi field
+- Validasi penanganan bitmap
 
-## 11. Next Steps
+## 11. Langkah Selanjutnya
 
 Setelah berhasil menyelesaikan Day 2:
-1. JPos Q2 server siap digunakan
-2. ISO-8583 message format understood
-3. Administrative messages working
-4. Siapkan untuk Day 3 (End-to-end payment flow)
-5. Review Spring Boot + JPos integration concepts
+1. Server JPos Q2 siap digunakan
+2. Format pesan ISO-8583 dipahami
+3. Pesan administratif berfungsi
+4. Siapkan untuk Day 3 (Alur pembayaran end-to-end)
+5. Review konsep integrasi Spring Boot + JPos

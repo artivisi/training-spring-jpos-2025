@@ -2,10 +2,10 @@
 
 ## Tujuan
 - Pengenalan ekosistem pembayaran & ISO-8583
-- Setup Spring Boot projects (Acquirer & Billing Provider)
+- Setup project Spring Boot (Acquirer & Billing Provider)
 - Implementasi REST API untuk payment processing
 - Integrasi database PostgreSQL & logging transaksi
-- Testing dengan Postman untuk API validation
+- Testing dengan Postman untuk validasi API
 
 ## 1. Environment Setup
 
@@ -128,149 +128,149 @@ mkdir -p billing-provider/src/main/resources
 ```
 
 ### 3.2 Spring Boot Dependencies
-Participants will create two Spring Boot projects:
+Peserta akan membuat dua project Spring Boot:
 
-**Required Dependencies:**
-- `spring-boot-starter-web` - REST API development
-- `spring-boot-starter-data-jpa` - Database integration
+**Dependencies yang Diperlukan:**
+- `spring-boot-starter-web` - Pengembangan REST API
+- `spring-boot-starter-data-jpa` - Integrasi database
 - `postgresql` - PostgreSQL JDBC driver
-- `spring-boot-starter-validation` - Request validation
-- `spring-boot-starter-actuator` - Health checks and monitoring
+- `spring-boot-starter-validation` - Validasi request
+- `spring-boot-starter-actuator` - Health check dan monitoring
 
-**Implementation Tasks:**
-1. Create POM files for acquirer-service and billing-provider
-2. Configure Spring Boot parent dependency
-3. Add required dependencies for both services
-4. Configure Maven compiler plugin for Java 25
+**Tugas Implementasi:**
+1. Buat file POM untuk acquirer-service dan billing-provider
+2. Konfigurasi Spring Boot parent dependency
+3. Tambah dependencies yang diperlukan untuk kedua service
+4. Konfigurasi Maven compiler plugin untuk Java 25
 
 ### 3.3 Application Configuration
-Participants will configure application.yml files:
+Peserta akan mengkonfigurasi file application.yml:
 
-**Acquirer Service Configuration:**
+**Konfigurasi Acquirer Service:**
 - Server port: 8080
 - Application name: acquirer-service
-- Database connection to PostgreSQL
-- JPA configuration with PostgreSQL dialect
-- Logging levels for debugging
-- Actuator endpoints for health checks
+- Database connection ke PostgreSQL
+- Konfigurasi JPA dengan PostgreSQL dialect
+- Logging level untuk debugging
+- Actuator endpoints untuk health check
 
-**Billing Provider Configuration:**
+**Konfigurasi Billing Provider:**
 - Server port: 8082
 - Application name: billing-provider
-- Database connection to PostgreSQL
-- JPA configuration for entity management
+- Database connection ke PostgreSQL
+- Konfigurasi JPA untuk entity management
 
 ### 3.4 Domain Models
-Participants will create JPA entities:
+Peserta akan membuat JPA entities:
 
-**Transaction Entity Features:**
-- @Entity and @Table annotations
-- Primary key with @GeneratedValue
-- Unique transaction ID field
-- BigDecimal amount with precision
-- Transaction status enum (PENDING, SUCCESS, FAILED)
-- Timestamp fields with @CreationTimestamp and @UpdateTimestamp
-- Proper validation annotations
+**Fitur Transaction Entity:**
+- Annotations @Entity dan @Table
+- Primary key dengan @GeneratedValue
+- Field unique transaction ID
+- BigDecimal amount dengan precision
+- Enum transaction status (PENDING, SUCCESS, FAILED)
+- Timestamp fields dengan @CreationTimestamp dan @UpdateTimestamp
+- Validation annotations yang tepat
 
-**Bill Entity Features:**
-- Primary key and unique bill ID
+**Fitur Bill Entity:**
+- Primary key dan unique bill ID
 - Customer information fields
-- Amount and fee fields with proper precision
-- Bill status enum (ACTIVE, PAID, EXPIRED)
-- Due date and description fields
-- Proper relationship annotations
+- Amount dan fee fields dengan precision yang tepat
+- Enum bill status (ACTIVE, PAID, EXPIRED)
+- Due date dan description fields
+- Relationship annotations yang tepat
 
 ## 4. REST API Implementation
 
 ### 4.1 Acquirer Service API
-Participants will implement:
+Peserta akan implementasikan:
 
 **PaymentRequest DTO:**
 - Bean validation annotations (@NotBlank, @NotNull, @Positive)
 - Required fields: billId, customerId, amount
 - Optional fields: currency, customerEmail, customerPhone
-- Proper getter/setter methods
+- Getter/setter methods yang tepat
 
-**PaymentController Features:**
-- @RestController and @RequestMapping annotations
-- Dependency injection with @Autowired
-- @PostMapping for payment processing
-- @GetMapping for status checking
-- @Valid annotation for request validation
-- Proper logging with @Slf4j
-- Health check endpoint with service information
+**Fitur PaymentController:**
+- Annotations @RestController dan @RequestMapping
+- Dependency injection dengan @Autowired
+- @PostMapping untuk payment processing
+- @GetMapping untuk status checking
+- @Valid annotation untuk request validation
+- Logging yang tepat dengan @Slf4j
+- Health check endpoint dengan service information
 
 ### 4.2 Billing Provider API
-Participants will implement:
+Peserta akan implementasikan:
 
-**BillController Features:**
-- REST endpoints for bill inquiry
+**Fitur BillController:**
+- REST endpoints untuk bill inquiry
 - Bill payment processing endpoint
 - Bill validation endpoint
 - Health check endpoint
-- Proper request/response handling
-- Structured logging for debugging
-- Error handling with appropriate HTTP status codes
+- Request/response handling yang tepat
+- Structured logging untuk debugging
+- Error handling dengan HTTP status codes yang tepat
 
-**Required DTOs:**
-- BillResponse for inquiry results
-- BillPaymentRequest for payment processing
-- BillValidationRequest for bill validation
-- BillValidationResponse for validation results
+**DTOs yang Diperlukan:**
+- BillResponse untuk inquiry results
+- BillPaymentRequest untuk payment processing
+- BillValidationRequest untuk bill validation
+- BillValidationResponse untuk validation results
 
 ## 5. Service Layer Implementation
 
 ### 5.1 PaymentService
-Participants will implement:
+Peserta akan implementasikan:
 
-**Core Service Features:**
-- @Service and @Transactional annotations
-- Transaction ID generation with timestamp
-- Transaction record creation and persistence
-- Integration with billing provider
-- Error handling and transaction status updates
+**Fitur Core Service:**
+- Annotations @Service dan @Transactional
+- Transaction ID generation dengan timestamp
+- Transaction record creation dan persistence
+- Integration dengan billing provider
+- Error handling dan transaction status updates
 
 **Business Logic:**
 - Transaction state management
 - Billing provider communication
-- Response mapping and error handling
+- Response mapping dan error handling
 - Audit trail creation
-- Proper exception handling
+- Exception handling yang tepat
 
 **Integration Requirements:**
-- TransactionRepository for data access
-- BillServiceClient for inter-service communication
-- Proper logging for debugging and monitoring
-- Builder pattern for response construction
+- TransactionRepository untuk data access
+- BillServiceClient untuk inter-service communication
+- Logging yang tepat untuk debugging dan monitoring
+- Builder pattern untuk response construction
 
 ### 5.2 Repository Layer
-Participants will create Spring Data repositories:
+Peserta akan membuat Spring Data repositories:
 
-**TransactionRepository Features:**
+**Fitur TransactionRepository:**
 - Spring Data JPA repository interface
-- Custom query method for finding by transaction ID
-- Proper exception handling for not found cases
+- Custom query method untuk finding by transaction ID
+- Exception handling yang tepat untuk not found cases
 
-**BillRepository Features:**
-- CRUD operations for bill entities
-- Query methods for bill status and customer ID
-- Custom queries for business requirements
+**Fitur BillRepository:**
+- CRUD operations untuk bill entities
+- Query methods untuk bill status dan customer ID
+- Custom queries untuk business requirements
 
 ## 6. Application Startup
-Participants will create main application classes:
+Peserta akan membuat main application classes:
 
-**Spring Boot Application Features:**
-- @SpringBootApplication annotation
-- Main method with SpringApplication.run()
+**Fitur Spring Boot Application:**
+- Annotation @SpringBootApplication
+- Main method dengan SpringApplication.run()
 - Component scanning configuration
-- Proper package structure
+- Package structure yang tepat
 
 **Implementation Tasks:**
-1. Create AcquirerApplication class
-2. Create BillingProviderApplication class
-3. Configure component scanning
+1. Buat AcquirerApplication class
+2. Buat BillingProviderApplication class
+3. Konfigurasi component scanning
 4. Test application startup
-5. Verify actuator endpoints are working
+5. Verify actuator endpoints bekerja
 
 ## 7. API Testing dengan Postman
 

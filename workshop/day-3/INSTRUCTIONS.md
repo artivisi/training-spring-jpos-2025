@@ -1,15 +1,15 @@
-# Hari 3 – End-to-End Bill Payment Flow
+# Hari 3 – Alur Pembayaran Tagihan End-to-End
 
 ## Tujuan
-- Implementasi complete payment flow dari Client → Acquirer → Gateway → Billing
-- JSON ↔ ISO-8583 translation service
-- Transaction state management
-- Error handling dan response mapping
-- Collaborative testing & debugging
+- Implementasi alur pembayaran lengkap dari Client → Acquirer → Gateway → Billing
+- Layanan translasi JSON ↔ ISO-8583
+- Manajemen state transaksi
+- Penanganan error dan pemetaan respons
+- Pengujian dan debugging kolaboratif
 
-## 1. Complete Payment Flow Architecture
+## 1. Arsitektur Alur Pembayaran Lengkap
 
-### 1.1 End-to-End Transaction Flow
+### 1.1 Alur Transaksi End-to-End
 ```mermaid
 sequenceDiagram
     participant Client
@@ -19,30 +19,30 @@ sequenceDiagram
     participant Database
 
     Client->>Acquirer: HTTP POST /payment/request (JSON)
-    Note over Client,Acquirer: Payment request with bill details
+    Note over Client,Acquirer: Payment request dengan rincian tagihan
 
-    Acquirer->>Acquirer: Validate request
-    Acquirer->>Database: Create transaction (PENDING)
-    Acquirer->>Gateway: Convert JSON → ISO-8583
-    Note over Acquirer,Gateway: MTI 0200 + DE 48 (bill data)
+    Acquirer->>Acquirer: Validasi request
+    Acquirer->>Database: Buat transaksi (PENDING)
+    Acquirer->>Gateway: Konversi JSON → ISO-8583
+    Note over Acquirer,Gateway: MTI 0200 + DE 48 (data tagihan)
 
-    Gateway->>Gateway: Validate ISO-8583
-    Gateway->>Gateway: Route to Billing Provider
+    Gateway->>Gateway: Validasi ISO-8583
+    Gateway->>Gateway: Route ke Billing Provider
     Gateway->>Billing: TCP/ISO-8583 (MTI 0200)
 
-    Billing->>Billing: Convert ISO-8583 → Business Object
-    Billing->>Database: Validate bill details
-    Billing->>Database: Process payment
-    Billing->>Database: Update bill status (PAID)
-    Billing->>Gateway: ISO-8583 Response (MTI 0210)
+    Billing->>Billing: Konversi ISO-8583 → Business Object
+    Billing->>Database: Validasi rincian tagihan
+    Billing->>Database: Proses pembayaran
+    Billing->>Database: Update status tagihan (PAID)
+    Billing->>Gateway: Respons ISO-8583 (MTI 0210)
     Note over Billing,Gateway: DE 39 = 00 (Success)
 
-    Gateway->>Acquirer: Forward response
-    Acquirer->>Database: Update transaction (SUCCESS)
+    Gateway->>Acquirer: Forward respons
+    Acquirer->>Database: Update transaksi (SUCCESS)
     Acquirer->>Client: HTTP Response (JSON)
 ```
 
-### 1.2 Service Integration Points
+### 1.2 Titik Integrasi Layanan
 ```mermaid
 graph TB
     subgraph "Acquirer Service :8080"
@@ -90,9 +90,9 @@ graph TB
     style B4 fill:#e8f5e8
 ```
 
-## 2. JSON ↔ ISO-8583 Translation
+## 2. Translasi JSON ↔ ISO-8583
 
-### 2.1 Translation Service Architecture
+### 2.1 Arsitektur Layanan Translasi
 ```mermaid
 graph LR
     A[JSON Request] --> B[Translation Service]
@@ -114,7 +114,7 @@ graph LR
     style G fill:#f3e5f5
 ```
 
-### 2.2 Field Mapping Configuration
+### 2.2 Konfigurasi Pemetaan Field
 ```json
 {
   "requestMapping": {
@@ -140,16 +140,16 @@ graph LR
 }
 ```
 
-### 2.3 Implementation Tasks
-Participants will implement:
-- **FieldMapperService** untuk mapping JSON ↔ ISO-8583 fields
-- **TypeConverterService** untuk data type conversions
-- **ValidationService** untuk field validation
-- **TranslationService** untuk end-to-end conversion
+### 2.3 Tugas Implementasi
+Peserta akan mengimplementasikan:
+- **FieldMapperService** untuk mapping field JSON ↔ ISO-8583
+- **TypeConverterService** untuk konversi tipe data
+- **ValidationService** untuk validasi field
+- **TranslationService** untuk konversi end-to-end
 
-## 3. Transaction State Management
+## 3. Manajemen State Transaksi
 
-### 3.1 Transaction State Flow
+### 3.1 Alur State Transaksi
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING: Request Received
@@ -173,28 +173,28 @@ stateDiagram-v2
     end note
 ```
 
-### 3.2 State Management Implementation
-**Participants will create:**
-- **TransactionStateService** untuk state transitions
-- **TimeoutManager** untuk timeout handling
-- **RetryService** untuk retry logic
+### 3.2 Implementasi Manajemen State
+**Peserta akan membuat:**
+- **TransactionStateService** untuk transisi state
+- **TimeoutManager** untuk penanganan timeout
+- **RetryService** untuk logika retry
 - **StateRepository** untuk persistence
 
-### 3.3 Transaction Timeout Configuration
+### 3.3 Konfigurasi Timeout Transaksi
 ```yaml
 transaction:
   timeout:
-    processing: 30s      # Max time for payment processing
-    response: 45s        # Max time for response
-    retry: 60s           # Wait time before retry
+    processing: 30s      # Waktu maksimal untuk proses pembayaran
+    response: 45s        # Waktu maksimal untuk respons
+    retry: 60s           # Waktu tunggu sebelum retry
   retry:
-    maxAttempts: 3       # Maximum retry attempts
+    maxAttempts: 3       # Maksimal percobaan retry
     backoffMultiplier: 2 # Exponential backoff
 ```
 
-## 4. Error Handling & Response Mapping
+## 4. Penanganan Error & Pemetaan Respons
 
-### 4.1 ISO-8583 Response Code Mapping
+### 4.1 Pemetaan Kode Respons ISO-8583
 ```mermaid
 graph LR
     A[ISO-8583 Response Codes] --> B[HTTP Status Mapping]
@@ -211,7 +211,7 @@ graph LR
     B4 --> C4["Service Error"]
 ```
 
-### 4.2 Standardized Error Response Format
+### 4.2 Format Respons Error Standar
 ```json
 {
   "transactionId": "TXN20251021001",
@@ -227,16 +227,16 @@ graph LR
 }
 ```
 
-### 4.3 Error Categorization
-**Participants will implement error handling for:**
-- **Business Logic Errors**: Invalid bill, insufficient funds
-- **Network Errors**: Connection timeout, unreachable host
-- **System Errors**: Database failure, processing errors
-- **Security Errors**: Invalid MAC, expired tokens
+### 4.3 Kategorisasi Error
+**Peserta akan mengimplementasikan penanganan error untuk:**
+- **Business Logic Errors**: Tagihan tidak valid, dana tidak cukup
+- **Network Errors**: Koneksi timeout, host tidak bisa dijangkau
+- **System Errors**: Database failure, error pemrosesan
+- **Security Errors**: MAC tidak valid, token kedaluwarsa
 
-## 5. Testing & Debugging
+## 5. Pengujian & Debugging
 
-### 5.1 Test Scenarios
+### 5.1 Skenario Pengujian
 ```mermaid
 graph TB
     A[Happy Path] --> A1[Successful Payment]
@@ -260,34 +260,34 @@ graph TB
     C4 --> Test9[Verify Concurrency]
 ```
 
-### 5.2 Integration Test Scripts
-**Participants will create test scripts for:**
-- **Normal payment flow** with various bill types
-- **Error scenarios** with different response codes
-- **Timeout handling** with delayed responses
-- **Concurrent requests** with duplicate transaction IDs
+### 5.2 Script Pengujian Integrasi
+**Peserta akan membuat script pengujian untuk:**
+- **Alur pembayaran normal** dengan berbagai tipe tagihan
+- **Skenario error** dengan kode respons berbeda
+- **Penanganan timeout** dengan respons yang ditunda
+- **Request konkuren** dengan ID transaksi duplikat
 
-### 5.3 Debug Tools Implementation
-**Participants will build:**
-- **Message Tracer** untuk transaction flow visualization
-- **Log Aggregator** untuk centralized logging
-- **Response Validator** untuk format validation
-- **Health Check Service** untuk system status
+### 5.3 Implementasi Alat Debug
+**Peserta akan membangun:**
+- **Message Tracer** untuk visualisasi alur transaksi
+- **Log Aggregator** untuk logging terpusat
+- **Response Validator** untuk validasi format
+- **Health Check Service** untuk status sistem
 
-## 6. Sample Test Data
+## 6. Contoh Data Pengujian
 
-### 6.1 Test Bill Data
-Lihat: `data/test-bills.sql`
+### 6.1 Data Tagihan Pengujian
+Data tagihan pengujian tersedia di: `data/test-bills.sql`
 
-### 6.2 Test Transaction Scenarios
-Lihat: `scenarios/transaction-tests.json`
+### 6.2 Skenario Transaksi Pengujian
+Skenario transaksi pengujian tersedia di: `scenarios/transaction-tests.json`
 
-### 6.3 Expected Response Samples
-Lihat: `samples/expected-responses.json`
+### 6.3 Contoh Respons yang Diharapkan
+Contoh respons yang diharapkan tersedia di: `samples/expected-responses.json`
 
-## 7. Implementation Validation
+## 7. Validasi Implementasi
 
-### 7.1 End-to-End Test
+### 7.1 Pengujian End-to-End
 ```bash
 # Test complete payment flow
 curl -X POST http://localhost:8080/api/v1/payment/request \
@@ -301,33 +301,33 @@ curl http://localhost:8081/api/v1/admin/trace/TXN20251021001
 curl http://localhost:8082/api/v1/bill/status/BILL001
 ```
 
-### 7.2 Validation Checklist
-- [ ] Complete payment flow working
-- [ ] JSON → ISO-8583 translation functional
-- [ ] Transaction state management working
-- [ ] Error handling implemented correctly
-- [ ] Response mapping accurate
-- [ ] Timeout handling functional
-- [ ] Retry logic working
-- [ ] Idempotency implemented
-- [ ] Concurrency handling safe
-- [ ] All test scenarios passing
+### 7.2 Checklist Validasi
+- [ ] Alur pembayaran lengkap berfungsi
+- [ ] Translasi JSON → ISO-8583 berfungsi
+- [ ] Manajemen state transaksi berfungsi
+- [ ] Penanganan error diimplementasikan dengan benar
+- [ ] Pemetaan respons akurat
+- [ ] Penanganan timeout berfungsi
+- [ ] Logika retry berfungsi
+- [ ] Idempotency diimplementasikan
+- [ ] Penanganan konkurensi aman
+- [ ] Semua skenario pengujian berhasil
 
-### 7.3 Performance Validation
-- **Response time** < 2 seconds for normal flow
-- **Throughput** > 100 transactions/minute
-- **Error rate** < 1% for normal operations
-- **Recovery time** < 30 seconds for failures
+### 7.3 Validasi Performa
+- **Response time** < 2 detik untuk alur normal
+- **Throughput** > 100 transaksi/menit
+- **Error rate** < 1% untuk operasi normal
+- **Recovery time** < 30 detik untuk kegagalan
 
-## 8. Troubleshooting Guide
+## 8. Panduan Pemecahan Masalah
 
-### 8.1 Common Issues
-- **Translation errors**: Field mapping configuration
-- **State management**: Database consistency
-- **Timeout issues**: Network connectivity
-- **Error handling**: Response code mapping
+### 8.1 Masalah Umum
+- **Translation errors**: Konfigurasi pemetaan field
+- **State management**: Konsistensi database
+- **Timeout issues**: Konektivitas jaringan
+- **Error handling**: Pemetaan kode respons
 
-### 8.2 Debug Commands
+### 8.2 Perintah Debug
 ```bash
 # Check transaction status
 docker-compose exec postgres psql -U postgres -d payment_system \
@@ -342,12 +342,12 @@ curl -X POST http://localhost:8081/api/v1/iso/test \
   -d @samples/iso-test.json
 ```
 
-## 9. Next Steps
+## 9. Langkah Selanjutnya
 
 Setelah berhasil menyelesaikan Day 3:
-1. Complete payment flow implemented and tested
-2. JSON ↔ ISO-8583 translation working
-3. Transaction state management robust
-4. Error handling comprehensive
-5. Siapkan untuk Day 4 (HSM Security Integration)
-6. Review PIN, MAC, and Key Exchange concepts
+1. Alur pembayaran lengkap diimplementasikan dan diuji
+2. Translasi JSON ↔ ISO-8583 berfungsi
+3. Manajemen state transaksi robust
+4. Penanganan error komprehensif
+5. Siapkan untuk Day 4 (Integrasi Keamanan HSM)
+6. Review konsep PIN, MAC, dan Key Exchange

@@ -1,18 +1,18 @@
-# Hari 5 – Connection Resiliency & Production Readiness
+# Hari 5 – Ketahanan Koneksi & Kesiapan Produksi
 
 ## Tujuan
-- Implementasi retry mechanism dengan exponential backoff
-- Store-and-forward pattern untuk offline scenarios
-- Production monitoring dengan Grafana & Prometheus
-- End-to-end testing untuk complete system validation
+- Implementasi mekanisme retry dengan exponential backoff
+- Store-and-forward pattern untuk skenario offline
+- Monitoring produksi dengan Grafana & Prometheus
+- Pengujian end-to-end untuk validasi sistem lengkap
 - Best practices untuk deployment, security, dan performance
 
-## 1. Retry Mechanisms
+## 1. Mekanisme Retry
 
-### 1.1 Retry Strategy Architecture
+### 1.1 Arsitektur Strategi Retry
 ```mermaid
 graph TB
-    subgraph "Retry Strategy"
+    subgraph "Strategi Retry"
         A[Request Failed] --> B{Transient Error?}
         B -->|Yes| C[Calculate Backoff]
         B -->|No| D[Return Error]
@@ -32,8 +32,8 @@ graph TB
     style H fill:#e1f5fe
 ```
 
-### 1.2 Exponential Backoff Implementation
-**Participants will implement:**
+### 1.2 Implementasi Exponential Backoff
+**Peserta akan mengimplementasikan:**
 - **Configurable retry attempts** (3-5 retries)
 - **Exponential backoff** (1s, 2s, 4s, 8s, 16s)
 - **Maximum timeout limits** (30-60 seconds)
@@ -70,7 +70,7 @@ stateDiagram-v2
 
 ## 2. Store-and-Forward Pattern
 
-### 2.1 Store-and-Forward Architecture
+### 2.1 Arsitektur Store-and-Forward
 ```mermaid
 graph TB
     subgraph "Store-and-Forward System"
@@ -96,17 +96,17 @@ graph TB
     style I fill:#e1f5fe
 ```
 
-### 2.2 Message Queue Implementation
-**Participants will implement:**
-- **Persistent queue** for failed transactions
-- **FIFO processing** with priority handling
+### 2.2 Implementasi Message Queue
+**Peserta akan mengimplementasikan:**
+- **Persistent queue** untuk transaksi gagal
+- **FIFO processing** dengan penanganan prioritas
 - **Duplicate detection** dan idempotency
 - **Manual retry** dan cancellation capabilities
 
-### 2.3 Queue Database Schema
-Lihat: `production/store-forward-schema.sql`
+### 2.3 Schema Database Queue
+Schema queue tersedia di: `production/store-forward-schema.sql`
 
-### 2.4 Queue Processing Logic
+### 2.4 Logika Pemrosesan Queue
 ```mermaid
 sequenceDiagram
     participant Client
@@ -127,9 +127,9 @@ sequenceDiagram
     Processor->>Queue: Update Status
 ```
 
-## 3. Connection Management Enhancement
+## 3. Peningkatan Manajemen Koneksi
 
-### 3.1 Advanced Connection Pooling
+### 3.1 Connection Pooling Lanjutan
 ```mermaid
 graph TB
     subgraph "Connection Pool Management"
@@ -161,16 +161,16 @@ graph TB
     style H fill:#f3e5f5
 ```
 
-### 3.2 Health Monitoring Implementation
-**Participants will implement:**
-- **Connection health checks** (30-second intervals)
-- **Automatic reconnection** with exponential backoff
-- **Connection status dashboard** with real-time monitoring
-- **Performance metrics** tracking and alerting
+### 3.2 Implementasi Health Monitoring
+**Peserta akan mengimplementasikan:**
+- **Connection health checks** (interval 30 detik)
+- **Automatic reconnection** dengan exponential backoff
+- **Connection status dashboard** dengan monitoring real-time
+- **Performance metrics** tracking dan alerting
 
-## 4. Production Monitoring Setup
+## 4. Setup Monitoring Produksi
 
-### 4.1 Monitoring Architecture
+### 4.1 Arsitektur Monitoring
 ```mermaid
 graph TB
     subgraph "Application Services"
@@ -216,38 +216,38 @@ graph TB
     style L fill:#ff6f00
 ```
 
-### 4.2 Prometheus Configuration
-Lihat: `production/prometheus.yml`
+### 4.2 Konfigurasi Prometheus
+Konfigurasi Prometheus tersedia di: `production/prometheus.yml`
 
-### 4.3 Grafana Dashboard Configuration
-Lihat: `production/grafana-dashboard.json`
+### 4.3 Konfigurasi Dashboard Grafana
+Konfigurasi dashboard Grafana tersedia di: `production/grafana-dashboard.json`
 
-### 4.4 Key Metrics to Monitor
+### 4.4 Metrik Kunci untuk Monitoring
 **Application Metrics:**
-- **Transaction throughput** (transactions/second)
-- **Response time** (p50, p95, p99 percentiles)
-- **Error rate** (4xx, 5xx, ISO-8583 response codes)
+- **Transaction throughput** (transaksi/detik)
+- **Response time** (persentil p50, p95, p99)
+- **Error rate** (4xx, 5xx, kode respons ISO-8583)
 - **Connection pool status** (active, idle, exhausted)
 
 **Business Metrics:**
-- **Payment success rate** by biller, by amount
+- **Payment success rate** berdasarkan biller dan amount
 - **Transaction value distribution**
 - **Peak hour analysis**
 - **Customer satisfaction metrics**
 
 **Infrastructure Metrics:**
 - **CPU/Memory/Disk** usage
-- **Network latency** and throughput
+- **Network latency** dan throughput
 - **Database connection** pool status
 - **JVM performance** metrics
 
-## 5. Deployment Configuration
+## 5. Konfigurasi Deployment
 
-### 5.1 Docker Configuration for Production
-Lihat: `production/docker-compose.prod.yml`
+### 5.1 Konfigurasi Docker untuk Produksi
+Konfigurasi Docker produksi tersedia di: `production/docker-compose.prod.yml`
 
-### 5.2 Environment-Specific Configurations
-**Production Environment Variables:**
+### 5.2 Konfigurasi Spesifik Environment
+**Environment Variables Produksi:**
 ```yaml
 # Database
 spring.datasource.url=jdbc:postgresql://postgres:5432/payment_system
@@ -274,20 +274,20 @@ management.endpoints.web.exposure.include=health,info,metrics,prometheus
 management.metrics.export.prometheus.enabled=true
 ```
 
-### 5.3 Kubernetes Deployment
-Lihat: `production/k8s-deployment.yaml`
+### 5.3 Deployment Kubernetes
+Konfigurasi Kubernetes tersedia di: `production/k8s-deployment.yaml`
 
 ## 6. Security Hardening
 
-### 6.1 PCI DSS Compliance Checklist
-**Participants will implement:**
-- **Secure transmission** untuk all data in transit
+### 6.1 Checklist Kepatuhan PCI DSS
+**Peserta akan mengimplementasikan:**
+- **Secure transmission** untuk semua data in transit
 - **Encryption at rest** untuk sensitive data
 - **Access control** dengan principle of least privilege
-- **Audit logging** untuk all security events
+- **Audit logging** untuk semua security events
 - **Vulnerability scanning** dan patching
 
-### 6.2 Security Headers Configuration
+### 6.2 Konfigurasi Security Headers
 ```yaml
 # Spring Security Headers
 security.headers.frame-options=deny
@@ -296,20 +296,20 @@ security.headers.xss-protection=1; mode=block
 security.headers.referrer-policy=strict-origin-when-cross-origin
 ```
 
-### 6.3 Rate Limiting Implementation
-**Participants will implement:**
-- **API rate limiting** (requests per minute per client)
-- **Connection rate limiting** (connections per IP)
-- **Payment frequency limiting** (payments per customer)
-- **DDoS protection** with automatic blocking
+### 6.3 Implementasi Rate Limiting
+**Peserta akan mengimplementasikan:**
+- **API rate limiting** (request per menit per client)
+- **Connection rate limiting** (koneksi per IP)
+- **Payment frequency limiting** (pembayaran per customer)
+- **DDoS protection** dengan automatic blocking
 
-## 7. Testing & Validation
+## 7. Pengujian & Validasi
 
-### 7.1 End-to-End Test Scenarios
-Lihat: `production/e2e-test-scenarios.json`
+### 7.1 Skenario Pengujian End-to-End
+Skenario pengujian end-to-end tersedia di: `production/e2e-test-scenarios.json`
 
-### 7.2 Load Testing Configuration
-**Using JMeter/k6 for performance testing:**
+### 7.2 Konfigurasi Load Testing
+**Menggunakan JMeter/k6 untuk pengujian performa:**
 ```yaml
 # Load Test Scenarios
 load_test:
@@ -326,74 +326,74 @@ load_test:
 ```
 
 ### 7.3 Chaos Engineering
-**Chaos scenarios to test:**
+**Skenario chaos yang akan diuji:**
 - **Network partition** simulation
 - **Database connection** failure
 - **Service unavailability** testing
 - **Resource exhaustion** scenarios
 
-### 7.4 Validation Checklist
-- [ ] All retry mechanisms working correctly
-- [ ] Store-and-forward queue processing functional
-- [ ] Circuit breaker pattern implemented
-- [ ] Monitoring dashboards configured
-- [ ] Alerts configured and tested
-- [ ] Load testing meets performance targets
-- [ ] Chaos engineering tests pass
-- [ ] Security hardening complete
-- [ ] Documentation updated
-- [ ] Deployment scripts tested
+### 7.4 Checklist Validasi
+- [ ] Semua mekanisme retry berfungsi dengan benar
+- [ ] Pemrosesan store-and-forward queue berfungsi
+- [ ] Circuit breaker pattern diimplementasikan
+- [ ] Dashboard monitoring dikonfigurasi
+- [ ] Alert dikonfigurasi dan diuji
+- [ ] Load testing memenuhi target performa
+- [ ] Chaos engineering tests lulus
+- [ ] Security hardening lengkap
+- [ ] Dokumentasi diperbarui
+- [ ] Deployment scripts diuji
 
-## 8. Operational Procedures
+## 8. Prosedur Operasional
 
-### 8.1 Runbook Templates
-**Common operational procedures:**
+### 8.1 Template Runbook
+**Prosedur operasional umum:**
 - **Service restart** procedures
 - **Database maintenance** procedures
 - **Security incident** response
 - **Performance troubleshooting** guide
 
-### 8.2 Backup and Recovery
-**Participants will implement:**
-- **Database backup** procedures (daily/weekly)
-- **Configuration backup** and versioning
+### 8.2 Backup dan Recovery
+**Peserta akan mengimplementasikan:**
+- **Database backup** procedures (harian/mingguan)
+- **Configuration backup** dan versioning
 - **Disaster recovery** testing
 - **RTO/RPO** documentation
 
-### 8.3 Monitoring Alert Rules
-**Critical alerts:**
-- **Service down** (> 1 minute)
-- **High error rate** (> 5% for 5 minutes)
-- **Slow response time** (> 2 seconds p95)
+### 8.3 Aturan Alert Monitoring
+**Alert kritis:**
+- **Service down** (> 1 menit)
+- **High error rate** (> 5% selama 5 menit)
+- **Slow response time** (> 2 detik p95)
 - **Database connection** issues
-- **Queue backlog** (> 1000 transactions)
+- **Queue backlog** (> 1000 transaksi)
 
-## 9. Production Readiness Assessment
+## 9. Penilaian Kesiapan Produksi
 
-### 9.1 Readiness Checklist
-**Technical Readiness:**
-- [ ] All services containerized and tested
-- [ ] Infrastructure as code implemented
-- [ ] Monitoring and alerting configured
-- [ ] Backup procedures documented
-- [ ] Security scan completed
-- [ ] Performance benchmarks met
+### 9.1 Checklist Kesiapan
+**Kesiapan Teknis:**
+- [ ] Semua services dikontainerisasi dan diuji
+- [ ] Infrastructure as code diimplementasikan
+- [ ] Monitoring dan alerting dikonfigurasi
+- [ ] Prosedur backup didokumentasikan
+- [ ] Security scan selesai
+- [ ] Target performa tercapai
 
-**Operational Readiness:**
-- [ ] Runbooks created and tested
-- [ ] Team training completed
-- [ ] Support procedures defined
-- [ ] Escalation paths identified
-- [ ] Communication plans prepared
+**Kesiapan Operasional:**
+- [ ] Runbooks dibuat dan diuji
+- [ ] Training tim selesai
+- [ ] Prosedur support didefinisikan
+- [ ] Jalur eskalasi diidentifikasi
+- [ ] Rencana komunikasi disiapkan
 
-**Business Readiness:**
-- [ ] SLA agreements defined
-- [ ] Capacity planning completed
-- [ ] Business continuity tested
-- [ ] User training completed
-- [ ] Go-live plan approved
+**Kesiapan Bisnis:**
+- [ ] Perjanjian SLA didefinisikan
+- [ ] Perencanaan kapasitas selesai
+- [ ] Business continuity diuji
+- [ ] Training pengguna selesai
+- [ ] Rencana go-live disetujui
 
-### 9.2 Go-Live Process
+### 9.2 Proses Go-Live
 ```mermaid
 graph TB
     A[Pre-Live Checklist] --> B[Infrastructure Validation]
@@ -411,40 +411,40 @@ graph TB
     style J fill:#ff9800
 ```
 
-## 10. Best Practices Summary
+## 10. Ringkasan Best Practices
 
-### 10.1 Development Best Practices
-- **Code quality** with automated testing
+### 10.1 Best Practices Pengembangan
+- **Code quality** dengan automated testing
 - **Security by design** principles
-- **Performance optimization** from start
+- **Performance optimization** dari awal
 - **Observability** built-in
 - **Documentation** as code
 
-### 10.2 Operational Best Practices
-- **Infrastructure as code** for consistency
+### 10.2 Best Practices Operasional
+- **Infrastructure as code** untuk konsistensi
 - **Automated deployment** pipelines
-- **Proactive monitoring** and alerting
+- **Proactive monitoring** dan alerting
 - **Regular security** assessments
 - **Continuous improvement** process
 
-## 11. Next Steps
+## 11. Langkah Selanjutnya
 
 Setelah berhasil menyelesaikan Day 5:
-1. Complete resiliency patterns implemented
-2. Production monitoring configured
-3. Security hardening completed
-4. Load testing validated
-5. Operational procedures documented
-6. System ready for production deployment
-7. Review complete training journey and lessons learned
+1. Pola ketahanan lengkap diimplementasikan
+2. Monitoring produksi dikonfigurasi
+3. Security hardening selesai
+4. Load testing tervalidasi
+5. Prosedur operasional didokumentasikan
+6. Sistem siap untuk deployment produksi
+7. Review perjalanan training lengkap dan pelajaran yang dipelajari
 
-## 12. Final Project Deliverables
+## 12. Deliverables Proyek Akhir
 
-**Complete production-ready system with:**
-- ✅ All 5 days of implementation
-- ✅ Full documentation and runbooks
-- ✅ Monitoring and alerting
+**Sistem produksi siap lengkap dengan:**
+- ✅ Semua 5 hari implementasi
+- ✅ Dokumentasi dan runbooks lengkap
+- ✅ Monitoring dan alerting
 - ✅ Security hardening
-- ✅ Load testing validation
-- ✅ Deployment automation
-- ✅ Operational procedures
+- ✅ Validasi load testing
+- ✅ Otomasi deployment
+- ✅ Prosedur operasional
