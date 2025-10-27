@@ -24,6 +24,6 @@ create table payment (
     transaction_time timestamp not null,
     amount decimal(19,2) not null,
     payment_references varchar(36) not null,
-    primary key id,
+    primary key (id),
     foreign key (id_billing) references billing(id)
 );
