@@ -1,8 +1,6 @@
 package com.muhardin.endy.training.billing.controller;
 
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.muhardin.endy.training.billing.entity.Billing;
 import com.muhardin.endy.training.billing.entity.Payment;
 import com.muhardin.endy.training.billing.repository.BillingRepository;
-import com.muhardin.endy.training.billing.repository.PaymentRepository;
+import com.muhardin.endy.training.billing.service.BillingServices;
 
 @RestController
 @RequestMapping("/api/billings")
@@ -24,7 +22,7 @@ public class BillingController {
     private BillingRepository billingRepository;
 
     @Autowired 
-    private PaymentRepository paymentRepository;
+    private BillingServices billingServices;
 
     @GetMapping("/")
     public List<Billing> findBillingByProductCodeAndCustomerNumber(String productCode, String customerNumber){
@@ -38,17 +36,6 @@ public class BillingController {
 
     @PostMapping("/{id}/payments")
     public Payment payBilling(@PathVariable("id") Billing billing){
-        Payment p = new Payment();
-        p.setBilling(billing);
-        p.setAmount(billing.getAmount());
-        p.setPaymentReferences(UUID.randomUUID().toString());
-        p.setTransactionTime(LocalDateTime.now());
-
-        billing.setPaid(true);
-        billingRepository.save(billing);
-
-        paymentRepository.save(p);
-        System.out.println("Payment berhasil untuk billing id : "+billing.getId()+", payment reference : "+p.getPaymentReferences()  );
-        return p;
+        return billingServices.pay(billing);
     }
 }
