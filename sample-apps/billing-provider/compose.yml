@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: training-postgres
+    environment:
+      POSTGRES_DB: billingdb
+      POSTGRES_USER: billing
+      POSTGRES_PASSWORD: training123
+    ports:
+      - "54320:5432"
+    volumes:
+      - ./db-billing:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billing -d billingdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
