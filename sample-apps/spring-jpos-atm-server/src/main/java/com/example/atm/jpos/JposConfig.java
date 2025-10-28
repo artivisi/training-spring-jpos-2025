@@ -16,11 +16,33 @@ public class JposConfig {
     @Value("${jpos.deploy.dir:deploy}")
     private String deployDir;
 
+    @Value("${jpos.server.port:22222}")
+    private int serverPort;
+
+    @Value("${jpos.server.max-sessions:100}")
+    private int maxSessions;
+
+    @Value("${jpos.server.channel:org.jpos.iso.channel.ASCIIChannel}")
+    private String channel;
+
+    @Value("${jpos.server.packager:org.jpos.iso.packager.BASE24Packager}")
+    private String packager;
+
     private Q2 q2;
 
     @PostConstruct
     public void startQ2() {
         log.info("Initializing Q2 with deploy directory: {}", deployDir);
+        log.info("jPOS server port: {}", serverPort);
+        log.info("jPOS max sessions: {}", maxSessions);
+        log.info("jPOS channel: {}", channel);
+        log.info("jPOS packager: {}", packager);
+
+        // Set system properties for Q2 XML property placeholders
+        System.setProperty("jpos.server.port", String.valueOf(serverPort));
+        System.setProperty("jpos.server.max-sessions", String.valueOf(maxSessions));
+        System.setProperty("jpos.server.channel", channel);
+        System.setProperty("jpos.server.packager", packager);
 
         File deployDirectory = new File(deployDir);
         if (!deployDirectory.exists()) {

@@ -255,9 +255,11 @@ spring:
 
 jpos:
   server:
-    port: 22222
-    max-connections: 100
+    port: 22222           # QServer listening port
+    max-sessions: 100     # Maximum concurrent client sessions
 ```
+
+The jPOS configuration properties from `application.yml` are automatically set as system properties before Q2 starts, and the XML configuration files in `deploy/` directory use property placeholders (`${jpos.server.port}`, `${jpos.server.max-sessions}`) to reference these values.
 
 ### Supported ISO-8583 Transactions
 

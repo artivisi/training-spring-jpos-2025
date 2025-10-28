@@ -3,13 +3,13 @@ package com.example.atm.jpos;
 import lombok.extern.slf4j.Slf4j;
 import org.jpos.iso.ISOException;
 import org.jpos.iso.ISOMsg;
-import org.jpos.iso.channel.ASCIIChannel;
-import org.jpos.iso.packager.BASE24Packager;
+import org.jpos.iso.ISOPackager;
+import org.jpos.iso.BaseChannel;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -21,20 +21,40 @@ import static org.junit.jupiter.api.Assertions.*;
 @Slf4j
 class JposServerTest {
 
-    private ASCIIChannel channel;
+    @Value("${jpos.server.port}")
+    private int serverPort;
+
+    @Value("${jpos.server.channel}")
+    private String channelClass;
+
+    @Value("${jpos.server.packager}")
+    private String packagerClass;
+
+    private BaseChannel channel;
     private static final String HOST = "localhost";
-    private static final int PORT = 22222;
 
     @BeforeEach
     void setUp() throws Exception {
         log.info("Setting up test channel");
-        channel = new ASCIIChannel(HOST, PORT, new BASE24Packager());
+        log.info("Channel class: {}", channelClass);
+        log.info("Packager class: {}", packagerClass);
+
+        // Instantiate packager from configuration
+        ISOPackager packager = (ISOPackager) Class.forName(packagerClass)
+                .getDeclaredConstructor()
+                .newInstance();
+
+        // Instantiate channel from configuration using constructor(String host, int port, ISOPackager packager)
+        channel = (BaseChannel) Class.forName(channelClass)
+                .getDeclaredConstructor(String.class, int.class, ISOPackager.class)
+                .newInstance(HOST, serverPort, packager);
 
         // Wait a bit for Q2 to start
         Thread.sleep(2000);
 
         channel.connect();
-        log.info("Connected to jPOS server at {}:{}", HOST, PORT);
+        log.info("Connected to jPOS server at {}:{} using channel={} packager={}",
+                 HOST, serverPort, channelClass, packagerClass);
     }
 
     @AfterEach

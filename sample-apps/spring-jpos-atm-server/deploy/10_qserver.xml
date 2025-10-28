@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <qserver name="iso-server" class="org.jpos.q2.iso.QServer" logger="Q2">
-    <attr name="port" type="java.lang.Integer">22222</attr>
+    <attr name="port" type="java.lang.Integer">${jpos.server.port}</attr>
+    <attr name="maxSessions" type="java.lang.Integer">${jpos.server.max-sessions}</attr>
 
-    <channel class="org.jpos.iso.channel.ASCIIChannel"
-             packager="org.jpos.iso.packager.BASE24Packager">
+    <channel class="${jpos.server.channel}"
+             packager="${jpos.server.packager}">
     </channel>
 
     <request-listener class="com.example.atm.jpos.IsoRequestListener">

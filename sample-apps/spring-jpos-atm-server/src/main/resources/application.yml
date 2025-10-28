@@ -39,7 +39,9 @@ spring:
 jpos:
   server:
     port: 22222
-    max-connections: 100
+    max-sessions: 100
+    channel: org.jpos.iso.channel.ASCIIChannel
+    packager: org.jpos.iso.packager.BASE24Packager
 
 logging:
   level:
