@@ -11,12 +11,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.jpos.iso.ISOMsg;
 import org.jpos.transaction.Context;
 import org.jpos.transaction.TransactionParticipant;
-import org.springframework.stereotype.Component;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
 
-@Component
+/**
+ * jPOS TransactionParticipant for withdrawal operations.
+ * Note: This class is NOT managed by Spring - it's instantiated by jPOS Q2.
+ * Spring beans are accessed via SpringBeanFactory.
+ */
 @Slf4j
 public class WithdrawalParticipant implements TransactionParticipant {
 

@@ -5,11 +5,13 @@ import org.jpos.iso.ISOMsg;
 import org.jpos.iso.ISOSource;
 import org.jpos.transaction.Context;
 import org.jpos.transaction.TransactionParticipant;
-import org.springframework.stereotype.Component;
 
 import java.io.Serializable;
 
-@Component
+/**
+ * jPOS TransactionParticipant for sending ISO-8583 response messages back to client.
+ * Note: This class is NOT managed by Spring - it's instantiated by jPOS Q2.
+ */
 @Slf4j
 public class SendResponseParticipant implements TransactionParticipant {
 
