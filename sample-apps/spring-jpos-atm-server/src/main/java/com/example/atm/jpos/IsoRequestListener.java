@@ -14,19 +14,19 @@ import org.jpos.transaction.Context;
 @Slf4j
 public class IsoRequestListener implements ISORequestListener, Configurable {
 
-    private Configuration cfg;
+    @SuppressWarnings("rawtypes")
     private Space space;
     private String queue;
 
     @Override
     public void setConfiguration(Configuration cfg) throws ConfigurationException {
-        this.cfg = cfg;
         this.space = SpaceFactory.getSpace(cfg.get("space", "tspace:default"));
         this.queue = cfg.get("queue", "txnmgr");
         log.info("IsoRequestListener configured with space={} queue={}",
                  cfg.get("space", "tspace:default"), queue);
     }
 
+    @SuppressWarnings("unchecked")
     @Override
     public boolean process(ISOSource source, ISOMsg msg) {
         try {
