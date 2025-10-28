@@ -1,17 +1,14 @@
 package com.example.atm.participants;
 
-import org.jpos.core.Configurable;
-import org.jpos.core.Configuration;
-import org.jpos.iso.ISOException;
-import org.jpos.iso.ISOMsg;
-import org.jpos.transaction.Context;
-import org.jpos.transaction.TransactionParticipant;
-import org.jpos.util.Log;
-import org.jpos.util.Logger;
-
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.Random;
+
+import org.jpos.core.Configurable;
+import org.jpos.core.Configuration;
+import org.jpos.transaction.Context;
+import org.jpos.transaction.TransactionParticipant;
+import org.jpos.util.Logger;
 
 public class BalanceInquiry implements TransactionParticipant, Configurable {
     private Configuration cfg;
