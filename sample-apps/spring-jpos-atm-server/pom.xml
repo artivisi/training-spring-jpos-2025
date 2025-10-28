@@ -23,6 +23,7 @@
         <maven.compiler.source>25</maven.compiler.source>
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <jpos.version>3.0.0</jpos.version>
     </properties>
 
     <dependencies>
@@ -61,6 +62,20 @@
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
+        <!-- jPOS -->
+        <dependency>
+            <groupId>org.jpos</groupId>
+            <artifactId>jpos</artifactId>
+            <version>${jpos.version}</version>
+        </dependency>
+
+        <!-- Micrometer Prometheus (required by jPOS 3) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <version>1.12.5</version>
         </dependency>
 
         <!-- Lombok -->

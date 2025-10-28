@@ -27,9 +27,11 @@ public class Account {
     @Column(name = "account_holder_name", nullable = false)
     private String accountHolderName;
 
+    @Builder.Default
     @Column(name = "balance", nullable = false, precision = 19, scale = 2)
     private BigDecimal balance = BigDecimal.ZERO;
 
+    @Builder.Default
     @Column(name = "currency", nullable = false, length = 3)
     private String currency = "IDR";
 
@@ -37,6 +39,7 @@ public class Account {
     @Column(name = "account_type", nullable = false, length = 20)
     private AccountType accountType;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private AccountStatus status = AccountStatus.ACTIVE;
@@ -49,6 +52,7 @@ public class Account {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
+    @Builder.Default
     @Version
     @Column(name = "version", nullable = false)
     private Long version = 0L;

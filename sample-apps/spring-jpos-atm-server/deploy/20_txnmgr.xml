@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<txnmgr name="txnmgr" class="org.jpos.transaction.TransactionManager" logger="Q2">
+    <property name="space" value="tspace:default" />
+    <property name="queue" value="txnmgr" />
+    <property name="sessions" value="10" />
+    <property name="max-sessions" value="128" />
+    <property name="debug" value="true" />
+
+    <participant class="com.example.atm.jpos.participant.BalanceInquiryParticipant" logger="Q2" realm="balance-inquiry" />
+    <participant class="com.example.atm.jpos.participant.WithdrawalParticipant" logger="Q2" realm="withdrawal" />
+    <participant class="com.example.atm.jpos.participant.ResponseBuilderParticipant" logger="Q2" realm="response-builder" />
+    <participant class="com.example.atm.jpos.participant.SendResponseParticipant" logger="Q2" realm="send-response" />
+</txnmgr>

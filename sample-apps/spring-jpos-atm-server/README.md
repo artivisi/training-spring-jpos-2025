@@ -210,23 +210,99 @@ curl -X POST http://localhost:8080/api/bank/withdrawal \
   -d '{"accountNumber":"1234567890","amount":500000.00}'
 ```
 
-## Configuration
+## jPOS ISO-8583 Server
 
-Virtual threads are enabled by default in `application.yml`:
+The application includes a jPOS server that listens for ISO-8583 messages on port 22222.
 
+### Configuration
+
+**application.yml:**
 ```yaml
 spring:
   threads:
     virtual:
       enabled: true
+
+jpos:
+  server:
+    port: 22222
+    max-connections: 100
 ```
+
+### Supported ISO-8583 Transactions
+
+#### 1. Balance Inquiry (Processing Code: 310000)
+
+**Request Message Fields:**
+- MTI: 0200
+- Field 2: PAN (Primary Account Number)
+- Field 3: 310000 (Balance Inquiry)
+- Field 4: Amount (12 digits, right-justified, zero-padded)
+- Field 7: Transmission Date/Time (MMDDhhmmss)
+- Field 11: System Trace Audit Number (6 digits)
+- Field 12: Time, Local Transaction (hhmmss)
+- Field 13: Date, Local Transaction (MMDD)
+- Field 41: Terminal ID (8 characters)
+- Field 102: Account Number
+
+**Response Message Fields:**
+- MTI: 0210
+- Field 39: Response Code
+  - `00`: Approved
+  - `14`: Invalid account
+  - `30`: Format error
+  - `62`: Restricted account
+  - `96`: System error
+- Field 54: Additional Amounts (Balance information)
+
+#### 2. Cash Withdrawal (Processing Code: 010000)
+
+**Request Message Fields:**
+- MTI: 0200
+- Field 2: PAN
+- Field 3: 010000 (Withdrawal)
+- Field 4: Amount in cents (000000050000 = 500.00)
+- Field 7: Transmission Date/Time
+- Field 11: System Trace Audit Number
+- Field 12: Time, Local Transaction
+- Field 13: Date, Local Transaction
+- Field 41: Terminal ID
+- Field 102: Account Number
+
+**Response Message Fields:**
+- MTI: 0210
+- Field 37: Retrieval Reference Number
+- Field 39: Response Code
+  - `00`: Approved
+  - `14`: Invalid account
+  - `51`: Insufficient funds
+  - `62`: Restricted account
+  - `96`: System error
+
+### Channel Configuration
+
+**Channel Type:** ASCIIChannel
+**Packager:** ISO87APackager (standard ISO-8583 1987 ASCII)
+**Port:** 22222
+
+### Virtual Thread Integration
+
+jPOS is configured to use Java 25 virtual threads for optimal performance:
+
+- **TransactionManager**: Runs on virtual threads with configurable sessions (default: 10, max: 128)
+- **Request Handlers**: Each ISO-8583 message is processed on a separate virtual thread
+- **Server Thread**: Main server loop runs on a virtual thread
+- **Executor Service**: `Executors.newVirtualThreadPerTaskExecutor()` for unlimited scalability
+
+This allows the server to handle thousands of concurrent connections efficiently without thread pool limitations.
 
 ## Tech Stack
 
 - Spring Boot 4.0.0-RC1
-- Java 25
+- Java 25 with Virtual Threads
 - PostgreSQL 17
 - Flyway DB
 - Spring Data JPA
 - Hibernate
 - Lombok
+- jPOS 3.0.0

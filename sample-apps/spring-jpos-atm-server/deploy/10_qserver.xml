@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<qserver name="iso-server" class="org.jpos.q2.iso.QServer" logger="Q2">
+    <attr name="port" type="java.lang.Integer">22222</attr>
+
+    <channel class="org.jpos.iso.channel.ASCIIChannel"
+             packager="org.jpos.iso.packager.BASE24Packager">
+    </channel>
+
+    <request-listener class="com.example.atm.jpos.IsoRequestListener">
+        <property name="queue" value="txnmgr" />
+        <property name="space" value="tspace:default" />
+    </request-listener>
+</qserver>
