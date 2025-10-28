@@ -234,6 +234,15 @@ Application logs are written to: `build/install/jpos-atm-switch/log/q2.log`
 
 ## Production Improvements
 
+> **⚠️ Important Note about jPOS-EE:**
+>
+> jPOS-EE (Extended Edition) provides cleaner database integration with built-in Hibernate support, connection pooling, and transaction participants (`Open`/`Close`). However, **jPOS-EE is not yet compatible with jPOS 3.0** as of January 2025.
+>
+> - jPOS-EE 2.2.x works with jPOS 2.x (LTS version)
+> - jPOS-EE 3.0 is under development (work in progress)
+>
+> The database integration approaches shown below use **manual connection management** as a temporary workaround. When jPOS-EE 3.0 becomes available, you should migrate to use its `org.jpos.ee.DB` class and `Open`/`Close` participants for cleaner, more maintainable code.
+
 The current implementation uses **in-memory storage** and **simulated data** for demonstration purposes. For production deployment, you should integrate with external systems.
 
 ### 1. Integration with External Bank REST API
@@ -971,3 +980,238 @@ psql -h localhost -U postgres -d atm_switch -f schema.sql
 
 Choose **REST API** for microservices architecture where bank logic is separate.
 Choose **Database** for traditional applications where the ATM switch owns the account data.
+
+### 3. Future: jPOS-EE 3.0 Approach (When Available)
+
+When jPOS-EE 3.0 becomes available with jPOS 3.0 support, the database integration will be much simpler and cleaner.
+
+#### Expected jPOS-EE 3.0 Pattern
+
+**Configuration (`cfg/db.properties`):**
+```properties
+hibernate.connection.username=postgres
+hibernate.connection.password=postgres
+hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+hibernate.connection.url=jdbc:postgresql://localhost:5432/atm_switch
+hibernate.c3p0.min_size=5
+hibernate.c3p0.max_size=20
+hibernate.c3p0.timeout=300
+```
+
+**Transaction Manager (`deploy/20_txnmgr.xml`):**
+```xml
+<txnmgr name="txnmgr" logger="Q2" class="org.jpos.transaction.TransactionManager">
+    <property name="queue" value="txnmgr" />
+    <property name="sessions" value="2" />
+    <property name="max-sessions" value="128" />
+
+    <!-- Open database session and transaction -->
+    <participant class="org.jpos.transaction.Open" logger="Q2">
+        <property name="timeout" value="30000" />
+    </participant>
+
+    <participant class="com.example.atm.participants.CheckMandatoryFields"
+                 logger="Q2" realm="check-mandatory-fields" />
+
+    <!-- Business participants use DB from context -->
+    <participant class="com.example.atm.participants.BalanceInquiryEE"
+                 logger="Q2" realm="balance-inquiry" />
+    <participant class="com.example.atm.participants.CashWithdrawalEE"
+                 logger="Q2" realm="cash-withdrawal" />
+
+    <participant class="com.example.atm.participants.SendResponse"
+                 logger="Q2" realm="send-response" />
+
+    <!-- Close database session (auto commit/rollback) -->
+    <participant class="org.jpos.transaction.Close" logger="Q2" />
+</txnmgr>
+```
+
+**Participant Code:**
+```java
+package com.example.atm.participants;
+
+import org.jpos.ee.DB;
+import org.jpos.transaction.Context;
+import org.jpos.transaction.TransactionParticipant;
+import com.example.atm.entities.Account;
+
+import java.io.Serializable;
+import java.math.BigDecimal;
+
+public class BalanceInquiryEE implements TransactionParticipant {
+
+    @Override
+    public int prepare(long id, Serializable context) {
+        Context ctx = (Context) context;
+        String mti = (String) ctx.get("MTI");
+        String processingCode = (String) ctx.get("PROCESSING_CODE");
+
+        if (!"0200".equals(mti) || !processingCode.startsWith("31")) {
+            return PREPARED | NO_JOIN;
+        }
+
+        String pan = (String) ctx.get("PAN");
+
+        // Get DB from context (opened by Open participant)
+        DB db = (DB) ctx.get("DB");
+
+        // Use HQL or Criteria API
+        Account account = db.session()
+            .createQuery("from Account where pan = :pan", Account.class)
+            .setParameter("pan", pan)
+            .uniqueResult();
+
+        if (account != null && "ACTIVE".equals(account.getStatus())) {
+            ctx.put("BALANCE", account.getBalance());
+            ctx.put("RESPONSE_CODE", "00");
+        } else if (account == null) {
+            ctx.put("RESPONSE_CODE", "14"); // Invalid card
+        } else {
+            ctx.put("RESPONSE_CODE", "57"); // Transaction not permitted
+        }
+
+        return PREPARED | NO_JOIN;
+    }
+
+    @Override
+    public void commit(long id, Serializable context) {
+        // No-op, Close participant handles commit
+    }
+
+    @Override
+    public void abort(long id, Serializable context) {
+        Context ctx = (Context) context;
+        ctx.put("RESPONSE_CODE", "96");
+    }
+}
+```
+
+**Participant with Updates:**
+```java
+public class CashWithdrawalEE implements TransactionParticipant {
+
+    @Override
+    public int prepare(long id, Serializable context) {
+        Context ctx = (Context) context;
+        String mti = (String) ctx.get("MTI");
+        String processingCode = (String) ctx.get("PROCESSING_CODE");
+
+        if (!"0200".equals(mti) || !processingCode.startsWith("01")) {
+            return PREPARED | NO_JOIN;
+        }
+
+        ISOMsg msg = (ISOMsg) ctx.get("REQUEST");
+        String pan = (String) ctx.get("PAN");
+        String stan = (String) ctx.get("STAN");
+        String terminalId = (String) ctx.get("TERMINAL_ID");
+
+        String amountStr = msg.getString(4);
+        BigDecimal amount = new BigDecimal(amountStr).divide(new BigDecimal("100"));
+
+        DB db = (DB) ctx.get("DB");
+
+        // Lock row for update
+        Account account = db.session()
+            .createQuery("from Account where pan = :pan", Account.class)
+            .setParameter("pan", pan)
+            .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+            .uniqueResult();
+
+        if (account == null) {
+            ctx.put("RESPONSE_CODE", "14");
+            return PREPARED | NO_JOIN;
+        }
+
+        if (!"ACTIVE".equals(account.getStatus())) {
+            ctx.put("RESPONSE_CODE", "57");
+            return PREPARED | NO_JOIN;
+        }
+
+        if (account.getBalance().compareTo(amount) < 0) {
+            ctx.put("RESPONSE_CODE", "51");
+            return PREPARED | NO_JOIN;
+        }
+
+        // Update balance
+        BigDecimal newBalance = account.getBalance().subtract(amount);
+        account.setBalance(newBalance);
+        db.session().update(account);
+
+        // Log transaction
+        Transaction txn = new Transaction();
+        txn.setAccount(account);
+        txn.setType("WITHDRAWAL");
+        txn.setAmount(amount);
+        txn.setStan(stan);
+        txn.setTerminalId(terminalId);
+        db.session().save(txn);
+
+        ctx.put("NEW_BALANCE", newBalance);
+        ctx.put("RESPONSE_CODE", "00");
+
+        return PREPARED; // Participate in commit
+    }
+
+    @Override
+    public void commit(long id, Serializable context) {
+        // Close participant handles commit
+    }
+
+    @Override
+    public void abort(long id, Serializable context) {
+        // Close participant handles rollback automatically
+        Context ctx = (Context) context;
+        ctx.put("RESPONSE_CODE", "96");
+    }
+}
+```
+
+#### Key Benefits of jPOS-EE Approach
+
+**vs Manual Connection Management:**
+- ✅ **No manual connection lifecycle** - `Open`/`Close` participants handle it
+- ✅ **Automatic transaction management** - commit/rollback handled automatically
+- ✅ **Connection pooling built-in** - C3P0 configured through properties
+- ✅ **Cleaner code** - participants focus on business logic only
+- ✅ **Hibernate ORM** - entities instead of JDBC
+- ✅ **Less boilerplate** - no try-catch-finally for connections
+
+**Comparison:**
+
+| Feature | Manual (Current) | jPOS-EE (Future) |
+|---------|-----------------|------------------|
+| Connection Management | Manual in each participant | `Open`/`Close` participants |
+| Transaction Control | Store Connection in Context | Automatic via `DB` class |
+| Rollback Logic | Manual in `abort()` | Automatic |
+| Connection Pool | Manual HikariCP setup | Built-in C3P0 |
+| Code Complexity | High (150+ lines) | Low (50-80 lines) |
+| Error Handling | Manual try-catch | Built-in |
+| ORM Support | ❌ JDBC only | ✅ Hibernate entities |
+
+#### Migration Path
+
+When jPOS-EE 3.0 is released:
+
+1. **Add jPOS-EE dependency** to `build.gradle`:
+   ```gradle
+   implementation 'org.jpos.ee:jposee-db-postgresql:3.0.0'
+   ```
+
+2. **Create Hibernate entities** for your tables
+
+3. **Replace manual participants** with jPOS-EE versions using `DB` class
+
+4. **Add `Open`/`Close`** participants to transaction manager
+
+5. **Remove** manual `DatabaseManager` and connection handling code
+
+6. **Configure** `cfg/db.properties` instead of programmatic setup
+
+#### References
+
+- [jPOS-EE GitHub Repository](https://github.com/jpos/jPOS-EE)
+- [jPOS-EE Database Support Documentation](https://github.com/jpos/jPOS-EE/blob/master/doc/src/asciidoc/module_dbsupport.adoc)
+- [jPOS 3.0 Release Notes](https://jpos.org/blog/2024/11/jpos-3.0.0-has-been-released/)
+
+**Note:** Monitor the [jPOS mailing list](https://groups.google.com/g/jpos-users) for jPOS-EE 3.0 release announcements.
