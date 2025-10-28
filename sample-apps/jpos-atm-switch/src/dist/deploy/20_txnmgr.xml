@@ -1,0 +1,12 @@
+<txnmgr name="txnmgr" logger="Q2" class="org.jpos.transaction.TransactionManager">
+    <property name="queue" value="txnmgr" />
+    <property name="sessions" value="2" />
+    <property name="max-sessions" value="128" />
+    <property name="debug" value="true" />
+
+    <participant class="com.example.atm.participants.CheckMandatoryFields" logger="Q2" realm="check-mandatory-fields" />
+    <participant class="com.example.atm.participants.BalanceInquiry" logger="Q2" realm="balance-inquiry" />
+    <participant class="com.example.atm.participants.CashWithdrawal" logger="Q2" realm="cash-withdrawal" />
+    <participant class="com.example.atm.participants.SendResponse" logger="Q2" realm="send-response" />
+    <participant class="com.example.atm.participants.ReversalHandler" logger="Q2" realm="reversal-handler" />
+</txnmgr>

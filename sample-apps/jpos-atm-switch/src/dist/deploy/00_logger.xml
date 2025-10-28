@@ -1,0 +1,3 @@
+<logger name="Q2" class="org.jpos.q2.qbean.LoggerAdaptor">
+    <log-listener class="org.jpos.util.SimpleLogListener" />
+</logger>

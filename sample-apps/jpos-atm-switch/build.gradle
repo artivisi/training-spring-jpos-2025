@@ -1,0 +1,75 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.example'
+version = '1.0.0-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        url = uri('https://jpos.org/maven')
+    }
+}
+
+dependencies {
+    implementation 'org.jpos:jpos:3.0.0'
+    implementation 'org.jdom:jdom2:2.0.6.1'
+
+    testImplementation 'junit:junit:4.13.2'
+}
+
+application {
+    mainClass = 'org.jpos.q2.Q2'
+    applicationDefaultJvmArgs = ['-Xmx512m']
+}
+
+task installApp(type: Sync) {
+    description = 'Installs jPOS application'
+    into "$buildDir/install/${project.name}"
+    from('src/dist') {
+        exclude 'cfg/*.lmk'
+        exclude 'cfg/*.jks'
+        into '/'
+    }
+    from(jar) {
+        into 'lib'
+    }
+    from(configurations.runtimeClasspath) {
+        into 'lib'
+    }
+    doLast {
+        file("$buildDir/install/${project.name}/log").mkdirs()
+    }
+}
+
+run {
+    dependsOn 'installApp'
+    workingDir = file("$buildDir/install/${project.name}")
+    args = []
+}
+
+task runTestClient(type: JavaExec) {
+    dependsOn 'installApp'
+    classpath = fileTree("$buildDir/install/${project.name}/lib")
+    mainClass = 'com.example.atm.TestClient'
+    standardInput = System.in
+}
+
+task dist(type: Tar) {
+    dependsOn 'assemble', 'installApp'
+    compression = Compression.GZIP
+    into("${project.name}-${project.version}") {
+        from("${buildDir}/install/${project.name}") {
+            exclude 'cfg/*.lmk'
+            exclude 'cfg/*.jks'
+        }
+    }
+}

@@ -1,0 +1,10 @@
+<server name="atm-server" class="org.jpos.q2.iso.QServer" logger="Q2">
+    <attr name="port" type="java.lang.Integer">8000</attr>
+    <channel class="org.jpos.iso.channel.ASCIIChannel" logger="Q2"
+             packager="org.jpos.iso.packager.BASE24Packager" />
+    <request-listener class="com.example.atm.ATMRequestListener" logger="Q2" realm="incoming-request-listener">
+        <property name="space" value="tspace:default" />
+        <property name="queue" value="txnmgr" />
+        <property name="timeout" value="60000" />
+    </request-listener>
+</server>
