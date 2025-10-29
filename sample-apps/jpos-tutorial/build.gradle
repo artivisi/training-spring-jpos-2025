@@ -4,8 +4,8 @@ plugins {
     id 'idea'
 }
 
-group = 'org.jpos.jposapp'
-version = '3.0.0-SNAPSHOT'
+group = 'com.muhardin.endy.tutorial.jpos.q2'
+version = '0.0.0-SNAPSHOT'
 
 repositories {
     mavenCentral()

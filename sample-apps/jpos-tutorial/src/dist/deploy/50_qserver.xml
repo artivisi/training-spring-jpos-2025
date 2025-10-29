@@ -1,0 +1,7 @@
+<qserver logger="Q2" name="qserver">
+    <attr name="port" type="java.lang.Integer">${qserver.port}</attr>
+    <channel class="org.jpos.iso.channel.XMLChannel"
+        logger="Q2"
+        packager="org.jpos.iso.packager.XMLPackager" />
+    <request-listener class="com.muhardin.endy.tutorial.jpos.q2.listener.NetmanRequestListener" logger="Q2"></request-listener>
+</qserver>
