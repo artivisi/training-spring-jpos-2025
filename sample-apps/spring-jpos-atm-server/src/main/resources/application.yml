@@ -21,8 +21,6 @@ spring:
     properties:
       hibernate:
         format_sql: true
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-        jakarta.persistence.schema-generation.scripts.action: none
     open-in-view: false
 
   flyway:
@@ -42,6 +40,17 @@ jpos:
     max-sessions: 100
     channel: org.jpos.iso.channel.ASCIIChannel
     packager: org.jpos.iso.packager.BASE24Packager
+
+hsm:
+  url: http://localhost:8080
+  pin:
+    verification:
+      endpoint: /api/hsm/pin/verify-with-translation
+    terminal-id: ATM00001
+    format: ISO_0
+  connection:
+    timeout: 5000
+    read-timeout: 10000
 
 logging:
   level:

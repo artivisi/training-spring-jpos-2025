@@ -44,6 +44,9 @@ public class Account {
     @Column(name = "status", nullable = false, length = 20)
     private AccountStatus status = AccountStatus.ACTIVE;
 
+    @Column(name = "encrypted_pin_block", length = 32)
+    private String encryptedPinBlock;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

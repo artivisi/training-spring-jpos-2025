@@ -27,6 +27,7 @@ public class BankService {
 
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
+    private final HsmService hsmService;
 
     @Transactional(readOnly = true)
     public BalanceInquiryResponse balanceInquiry(BalanceInquiryRequest request) {
@@ -113,6 +114,38 @@ public class BankService {
                 .timestamp(timestamp)
                 .referenceNumber(referenceNumber)
                 .build();
+    }
+
+    public void verifyPin(String accountNumber, String pinBlock, String pan) {
+        log.info("Verifying PIN for account: {}", accountNumber);
+
+        if (pinBlock == null || pinBlock.isEmpty()) {
+            log.debug("No PIN block provided for account: {}, skipping verification", accountNumber);
+            return;
+        }
+
+        Account account = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new AccountNotFoundException(
+                        "Account not found: " + accountNumber));
+
+        String storedPinBlock = account.getEncryptedPinBlock();
+        if (storedPinBlock == null || storedPinBlock.isEmpty()) {
+            log.error("No PIN configured for account: {}", accountNumber);
+            throw new RuntimeException("PIN verification required but not configured");
+        }
+
+        boolean pinValid = hsmService.verifyPinBlock(
+                pinBlock,
+                storedPinBlock,
+                pan
+        );
+
+        if (!pinValid) {
+            log.warn("Invalid PIN for account: {}", accountNumber);
+            throw new RuntimeException("Invalid PIN");
+        }
+
+        log.info("PIN verified successfully for account: {}", accountNumber);
     }
 
     private String generateReferenceNumber() {

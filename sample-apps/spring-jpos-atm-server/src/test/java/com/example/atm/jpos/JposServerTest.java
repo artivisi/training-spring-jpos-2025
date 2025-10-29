@@ -1,5 +1,9 @@
 package com.example.atm.jpos;
 
+import com.example.atm.dto.hsm.PinBlockVerificationRequest;
+import com.example.atm.dto.hsm.PinBlockVerificationResponse;
+import com.example.atm.service.HsmService;
+import com.example.atm.util.PinBlockGenerator;
 import lombok.extern.slf4j.Slf4j;
 import org.jpos.iso.ISOException;
 import org.jpos.iso.ISOMsg;
@@ -10,12 +14,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @Slf4j
@@ -30,14 +38,41 @@ class JposServerTest {
     @Value("${jpos.server.packager}")
     private String packagerClass;
 
+    @Value("${test.tpk.key}")
+    private String tpkKey;
+
+    @MockBean
+    private HsmService hsmService;
+
     private BaseChannel channel;
     private static final String HOST = "localhost";
+    private static final String TEST_PAN = "4111111111111111";
 
     @BeforeEach
     void setUp() throws Exception {
         log.info("Setting up test channel");
         log.info("Channel class: {}", channelClass);
         log.info("Packager class: {}", packagerClass);
+        log.info("TPK Key: {}", tpkKey);
+
+        // Mock HSM service to always return true for valid PINs
+        when(hsmService.verifyPinBlock(anyString(), anyString(), anyString()))
+                .thenAnswer(invocation -> {
+                    String incomingPinBlock = invocation.getArgument(0);
+                    String storedPinBlock = invocation.getArgument(1);
+                    String pan = invocation.getArgument(2);
+
+                    log.info("Mock HSM verifying PIN block");
+
+                    // For test accounts with stored PIN blocks, return true
+                    // Account 1234567890 has PIN 1234, stored PIN: ABCD1234567890ABCDEF1234567890AB
+                    // Account 0987654321 has PIN 5678, stored PIN: 5678ABCDEF1234567890ABCDEF123456
+                    if (storedPinBlock.startsWith("ABCD") || storedPinBlock.startsWith("5678")) {
+                        return true;
+                    }
+
+                    return false;
+                });
 
         // Instantiate packager from configuration
         ISOPackager packager = (ISOPackager) Class.forName(packagerClass)
@@ -67,9 +102,9 @@ class JposServerTest {
 
     @Test
     void testBalanceInquiry() throws ISOException, IOException {
-        log.info("Testing balance inquiry");
+        log.info("Testing balance inquiry with PIN");
 
-        ISOMsg request = createBalanceInquiryRequest("1234567890");
+        ISOMsg request = createBalanceInquiryRequest("1234567890", "1234");
 
         log.info("Sending balance inquiry request: MTI={}", request.getMTI());
         channel.send(request);
@@ -88,10 +123,56 @@ class JposServerTest {
     }
 
     @Test
+    void testBalanceInquiryWithoutPin() throws ISOException, IOException {
+        log.info("Testing balance inquiry without PIN (should be skipped)");
+
+        ISOMsg request = createBalanceInquiryRequest("1234567890", null);
+
+        log.info("Sending balance inquiry request without PIN");
+        channel.send(request);
+
+        ISOMsg response = channel.receive();
+        assertNotNull(response, "Response should not be null");
+
+        log.info("Received response: MTI={} RC={}",
+                response.getMTI(), response.getString(39));
+
+        assertEquals("0210", response.getMTI(), "Response MTI should be 0210");
+        assertEquals("00", response.getString(39), "Response code should be 00 (approved)");
+
+        log.info("Balance inquiry without PIN test passed");
+    }
+
+    @Test
+    void testBalanceInquiryInvalidPin() throws ISOException, IOException {
+        log.info("Testing balance inquiry with invalid PIN");
+
+        // Mock HSM to return false for wrong PIN
+        when(hsmService.verifyPinBlock(anyString(), anyString(), anyString()))
+                .thenReturn(false);
+
+        ISOMsg request = createBalanceInquiryRequest("1234567890", "9999");
+
+        log.info("Sending balance inquiry request with wrong PIN");
+        channel.send(request);
+
+        ISOMsg response = channel.receive();
+        assertNotNull(response, "Response should not be null");
+
+        log.info("Received response: MTI={} RC={}",
+                response.getMTI(), response.getString(39));
+
+        assertEquals("0210", response.getMTI(), "Response MTI should be 0210");
+        assertEquals("55", response.getString(39), "Response code should be 55 (invalid PIN)");
+
+        log.info("Invalid PIN test passed");
+    }
+
+    @Test
     void testBalanceInquiryInvalidAccount() throws ISOException, IOException {
         log.info("Testing balance inquiry with invalid account");
 
-        ISOMsg request = createBalanceInquiryRequest("9999999999");
+        ISOMsg request = createBalanceInquiryRequest("9999999999", null);
 
         log.info("Sending balance inquiry request for invalid account");
         channel.send(request);
@@ -110,9 +191,9 @@ class JposServerTest {
 
     @Test
     void testWithdrawal() throws ISOException, IOException {
-        log.info("Testing cash withdrawal");
+        log.info("Testing cash withdrawal with PIN");
 
-        ISOMsg request = createWithdrawalRequest("1234567890", 50000); // 500.00
+        ISOMsg request = createWithdrawalRequest("1234567890", 50000, "1234"); // 500.00
 
         log.info("Sending withdrawal request: MTI={}", request.getMTI());
         channel.send(request);
@@ -134,7 +215,7 @@ class JposServerTest {
     void testWithdrawalInsufficientFunds() throws ISOException, IOException {
         log.info("Testing withdrawal with insufficient funds");
 
-        ISOMsg request = createWithdrawalRequest("1234567890", 1000000000); // 10,000,000.00
+        ISOMsg request = createWithdrawalRequest("1234567890", 1000000000, "1234"); // 10,000,000.00
 
         log.info("Sending withdrawal request for large amount");
         channel.send(request);
@@ -151,12 +232,12 @@ class JposServerTest {
         log.info("Insufficient funds test passed");
     }
 
-    private ISOMsg createBalanceInquiryRequest(String accountNumber) throws ISOException {
+    private ISOMsg createBalanceInquiryRequest(String accountNumber, String clearPin) throws ISOException {
         ISOMsg msg = new ISOMsg();
         msg.setMTI("0200");
 
         // Field 2: PAN
-        msg.set(2, "4111111111111111");
+        msg.set(2, TEST_PAN);
 
         // Field 3: Processing Code - 310000 for balance inquiry
         msg.set(3, "310000");
@@ -182,18 +263,25 @@ class JposServerTest {
         // Field 41: Terminal ID
         msg.set(41, "ATM00001");
 
+        // Field 52: PIN Block (if provided)
+        if (clearPin != null && !clearPin.isEmpty()) {
+            String pinBlock = PinBlockGenerator.generatePinBlock(clearPin, TEST_PAN, tpkKey);
+            msg.set(52, pinBlock);
+            log.info("Generated PIN block for testing: {}", pinBlock);
+        }
+
         // Field 102: Account Number
         msg.set(102, accountNumber);
 
         return msg;
     }
 
-    private ISOMsg createWithdrawalRequest(String accountNumber, long amountInCents) throws ISOException {
+    private ISOMsg createWithdrawalRequest(String accountNumber, long amountInCents, String clearPin) throws ISOException {
         ISOMsg msg = new ISOMsg();
         msg.setMTI("0200");
 
         // Field 2: PAN
-        msg.set(2, "4111111111111111");
+        msg.set(2, TEST_PAN);
 
         // Field 3: Processing Code - 010000 for withdrawal
         msg.set(3, "010000");
@@ -218,6 +306,13 @@ class JposServerTest {
 
         // Field 41: Terminal ID
         msg.set(41, "ATM00001");
+
+        // Field 52: PIN Block (if provided)
+        if (clearPin != null && !clearPin.isEmpty()) {
+            String pinBlock = PinBlockGenerator.generatePinBlock(clearPin, TEST_PAN, tpkKey);
+            msg.set(52, pinBlock);
+            log.info("Generated PIN block for testing: {}", pinBlock);
+        }
 
         // Field 102: Account Number
         msg.set(102, accountNumber);
