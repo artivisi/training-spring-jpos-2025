@@ -12,23 +12,29 @@ A jPOS 3 application implementing an ATM switch with Java 25, supporting:
 ```
 jpos-atm-switch/
 ├── build.gradle                    # Gradle build configuration
+├── THROTTLING.md                   # Throttling mechanism documentation
 ├── src/
 │   ├── main/
 │   │   └── java/
 │   │       └── com/example/atm/
-│   │           ├── ATMRequestListener.java         # QServer request-listener
-│   │           ├── TestClient.java                 # Test client to simulate ATM
+│   │           ├── ATMRequestListener.java              # Basic request-listener
+│   │           ├── ThrottleAwareRequestListener.java    # Throttle-aware request-listener
+│   │           ├── QueueMonitor.java                    # Queue monitoring QBean
+│   │           ├── ThrottleManager.java                 # Shared throttle state
+│   │           ├── TestClient.java                      # Test client to simulate ATM
+│   │           ├── LoadTestClient.java                  # Load testing tool
 │   │           └── participants/
-│   │               ├── CheckMandatoryFields.java   # Validates required fields
-│   │               ├── BalanceInquiry.java         # Handles balance inquiry
-│   │               ├── CashWithdrawal.java         # Handles cash withdrawal
-│   │               ├── SendResponse.java           # Sends response to client
-│   │               └── ReversalHandler.java        # Handles reversal requests
+│   │               ├── CheckMandatoryFields.java        # Validates required fields
+│   │               ├── BalanceInquiry.java              # Handles balance inquiry
+│   │               ├── CashWithdrawal.java              # Handles cash withdrawal
+│   │               ├── SendResponse.java                # Sends response to client
+│   │               └── ReversalHandler.java             # Handles reversal requests
 │   └── dist/
 │       ├── deploy/                  # Q2 deployment descriptors
 │       │   ├── 00_logger.xml        # Logger configuration
-│       │   ├── 10_channel.xml       # QServer with ASCIIChannel and BASE24Packager
-│       │   └── 20_txnmgr.xml        # Transaction Manager
+│       │   ├── 10_channel_with_throttle.xml  # QServer with throttle-aware listener
+│       │   ├── 15_queue_monitor.xml          # Queue monitoring configuration
+│       │   └── 20_txnmgr.xml                 # Transaction Manager
 │       └── cfg/                     # Configuration files (if needed)
 ```
 
@@ -85,6 +91,7 @@ In a separate terminal:
 - `00` - Approved
 - `30` - Format error
 - `51` - Insufficient funds
+- `91` - System unavailable (returned during throttling)
 - `96` - System error
 
 ## Testing Scenarios
@@ -206,6 +213,320 @@ If all participants return `PREPARED`:
 If any participant returns `ABORTED`:
 - TransactionManager calls `abort()` on each participant
 - For CashWithdrawal: balance is restored
+
+## Queue Monitoring and Throttling
+
+The ATM switch implements **automatic throttling** to prevent system overload when the Space queue size exceeds configurable thresholds. This provides backpressure control during high traffic periods.
+
+### Architecture
+
+```mermaid
+graph TB
+    subgraph "Input Layer"
+        ATM[ATM Clients]
+        QS[QServer<br/>Port 8000]
+    end
+
+    subgraph "Throttle Control"
+        QM[QueueMonitor<br/>Background Thread]
+        TM_FLAG[ThrottleManager<br/>Shared State]
+        RL[ThrottleAwareRequestListener]
+    end
+
+    subgraph "Processing Layer"
+        SP[Space Queue<br/>txnmgr]
+        TM[TransactionManager<br/>2-128 sessions]
+    end
+
+    ATM -->|ISO-8583| QS
+    QS --> RL
+    RL -->|Check| TM_FLAG
+    RL -->|"if not throttled"| SP
+    RL -->|"if throttled<br/>response code 91"| QS
+    QS -->|Response| ATM
+    SP --> TM
+    QM -->|Check every 1s| SP
+    QM -->|Set flag| TM_FLAG
+
+    style TM_FLAG fill:#ff9,stroke:#333,stroke-width:2px
+    style QM fill:#9cf,stroke:#333,stroke-width:2px
+```
+
+### Throttling Behavior
+
+#### Normal Operation (Queue Size < 100)
+
+```mermaid
+sequenceDiagram
+    participant ATM as ATM Client
+    participant QS as QServer
+    participant RL as ThrottleAware<br/>RequestListener
+    participant TM_FLAG as ThrottleManager
+    participant SP as Space Queue<br/>(size: 45)
+    participant TM as TransactionManager
+    participant QM as QueueMonitor<br/>(Background)
+
+    Note over QM,SP: Background monitoring
+    QM->>SP: Check queue size
+    SP-->>QM: size = 45
+    Note over QM: 45 < 100 (high threshold)<br/>Keep throttle OFF
+    QM->>TM_FLAG: setThrottled(false)
+
+    ATM->>QS: ISO-8583 Request (0200)
+    QS->>RL: process(source, msg)
+    RL->>TM_FLAG: isThrottled()?
+    TM_FLAG-->>RL: false
+    Note over RL: Normal operation
+    RL->>SP: out("txnmgr", context)
+    Note over SP: Queue size: 45 → 46
+    SP->>TM: Process transaction
+    TM-->>QS: Send response via ISOSource
+    QS-->>ATM: ISO-8583 Response (0210)<br/>Response Code: 00
+```
+
+#### Throttled Operation (Queue Size ≥ 100)
+
+```mermaid
+sequenceDiagram
+    participant ATM as ATM Client
+    participant QS as QServer
+    participant RL as ThrottleAware<br/>RequestListener
+    participant TM_FLAG as ThrottleManager
+    participant SP as Space Queue<br/>(size: 105)
+    participant TM as TransactionManager
+    participant QM as QueueMonitor<br/>(Background)
+
+    Note over QM,SP: Background monitoring
+    QM->>SP: Check queue size
+    SP-->>QM: size = 105
+    Note over QM: 105 ≥ 100 (high threshold)<br/>⚠️ ENABLE THROTTLE
+    QM->>TM_FLAG: setThrottled(true)
+    Note over QM: Log: "Enabling throttle mode"
+
+    ATM->>QS: ISO-8583 Request (0200)
+    QS->>RL: process(source, msg)
+    RL->>TM_FLAG: isThrottled()?
+    TM_FLAG-->>RL: true ⚠️
+    Note over RL: System throttled<br/>Create error response
+    RL->>RL: Clone request as response<br/>Set MTI 0210<br/>Set field 39 = "91"
+    RL->>QS: source.send(response)
+    Note over RL: Request NOT queued
+    QS-->>ATM: ISO-8583 Response (0210)<br/>Response Code: 91<br/>(System unavailable)
+
+    Note over SP: Queue size stays at 105<br/>(no new requests added)
+```
+
+#### Resume Normal Operation (Queue Size ≤ 50)
+
+```mermaid
+sequenceDiagram
+    participant QM as QueueMonitor<br/>(Background)
+    participant SP as Space Queue
+    participant TM as TransactionManager
+    participant TM_FLAG as ThrottleManager
+
+    Note over SP,TM: TransactionManager processing backlog
+    loop Processing existing requests
+        SP->>TM: Process queued context
+        TM->>TM: Execute participants
+        Note over SP: Queue size decreasing<br/>105 → 104 → ... → 51 → 50
+    end
+
+    Note over QM: Check interval (1 second)
+    QM->>SP: Check queue size
+    SP-->>QM: size = 50
+    Note over QM: 50 ≤ 50 (low threshold)<br/>✅ DISABLE THROTTLE
+    QM->>TM_FLAG: setThrottled(false)
+    Note over QM: Log: "Disabling throttle mode"
+    Note over TM_FLAG: System back to normal<br/>Accept new requests
+```
+
+### State Diagram
+
+```mermaid
+stateDiagram-v2
+    [*] --> Normal: Start QueueMonitor
+
+    Normal: Normal Operation
+    Normal: ✅ Accept requests
+    Normal: ✅ Queue to Space
+    Normal: Queue size < 100
+
+    Throttled: Throttled Mode
+    Throttled: ⚠️ Accept connections
+    Throttled: ⚠️ Return code 91
+    Throttled: ❌ Do NOT queue
+    Throttled: Queue size ≥ 100
+
+    Normal --> Throttled: Queue size ≥ 100<br/>(high threshold)
+    Throttled --> Normal: Queue size ≤ 50<br/>(low threshold)
+
+    Throttled --> Throttled: 50 < Queue size < 100<br/>(hysteresis zone)
+
+    Normal --> [*]: Stop QueueMonitor<br/>setThrottled(false)
+    Throttled --> [*]: Stop QueueMonitor<br/>setThrottled(false)
+```
+
+### Configuration Parameters
+
+File: `src/dist/deploy/15_queue_monitor.xml`
+
+```xml
+<queue-monitor class="com.example.atm.QueueMonitor" logger="Q2" realm="queue-monitor">
+    <property name="space" value="tspace:default" />
+    <property name="queue" value="txnmgr" />
+    <property name="check-interval" value="1000" />      <!-- Check every 1 second -->
+    <property name="high-threshold" value="100" />       <!-- Throttle at 100 -->
+    <property name="low-threshold" value="50" />         <!-- Resume at 50 -->
+</queue-monitor>
+```
+
+File: `src/dist/deploy/10_channel_with_throttle.xml`
+
+```xml
+<request-listener class="com.example.atm.ThrottleAwareRequestListener"
+                  logger="Q2" realm="incoming-request-listener">
+    <property name="space" value="tspace:default" />
+    <property name="queue" value="txnmgr" />
+    <property name="timeout" value="60000" />
+    <property name="throttle-response-code" value="91" />  <!-- System unavailable -->
+</request-listener>
+```
+
+### Response Codes During Throttling
+
+| Code | Description | When Used |
+|------|-------------|-----------|
+| `00` | Approved | Normal operation - transaction successful |
+| `91` | **System malfunction** | **System throttled - queue size exceeded** |
+| `96` | System error | Technical error in processing |
+
+### Hysteresis Mechanism
+
+The throttling uses **hysteresis** (different thresholds for enable/disable) to prevent rapid state flapping:
+
+```
+Queue Size Timeline:
+
+      100 ─────────────────────────── High Threshold (Enable throttle)
+       │    ↑                    ↓
+       │    │  Hysteresis Zone  │
+       │    │                    │
+       50 ─────────────────────────── Low Threshold (Disable throttle)
+
+        0 ────────────────────────────
+
+Timeline:
+    95 → 98 → 102 → 105 ⚠️ THROTTLE ENABLED
+    105 → 98 → 85 → 70 (still throttled - in hysteresis zone)
+    70 → 55 → 48 ✅ THROTTLE DISABLED
+    48 → 52 → 55 (still normal - in hysteresis zone)
+```
+
+**Without hysteresis** (if using same threshold):
+- Queue hits 100: throttle ON
+- TransactionManager processes 1 request: queue = 99, throttle OFF
+- New request arrives: queue = 100, throttle ON
+- TransactionManager processes 1 request: queue = 99, throttle OFF
+- **Result**: Rapid on/off flapping, unstable behavior
+
+**With hysteresis** (high=100, low=50):
+- Queue hits 100: throttle ON
+- Queue must drop to 50 before throttle turns OFF
+- Provides stable behavior during load fluctuations
+
+### Load Testing
+
+To test the throttling mechanism, use the included load test client:
+
+```bash
+# Lower thresholds for easier testing (edit 15_queue_monitor.xml)
+# high-threshold: 10
+# low-threshold: 5
+
+# Start the server
+./gradlew installApp
+build/install/jpos-atm-switch/bin/q2
+
+# In another terminal, generate load
+./gradlew run --args="com.example.atm.LoadTestClient 20 10"
+```
+
+**Expected behavior:**
+1. Initial requests succeed with response code `00`
+2. When queue reaches 10, throttle activates
+3. New requests receive response code `91` (System unavailable)
+4. TransactionManager processes backlog
+5. When queue drops to 5, throttle deactivates
+6. New requests succeed again with response code `00`
+
+**Monitor logs:**
+```
+Queue size (10) reached high threshold (10). Enabling throttle mode.
+Request rejected (system throttled): MTI=0200
+Queue size (5) dropped to low threshold (5). Disabling throttle mode.
+```
+
+### Performance Tuning
+
+#### TransactionManager Configuration
+
+File: `src/dist/deploy/20_txnmgr.xml`
+
+```xml
+<property name="sessions" value="2" />        <!-- Initial worker threads -->
+<property name="max-sessions" value="128" />  <!-- Maximum concurrent sessions -->
+```
+
+- **Low traffic**: `sessions=2` sufficient
+- **Medium traffic**: `sessions=10-20` recommended
+- **High traffic**: Increase `max-sessions` to 256 or 512
+
+#### Queue Threshold Guidelines
+
+| System Capacity | High Threshold | Low Threshold | Check Interval |
+|----------------|----------------|---------------|----------------|
+| Small (1-10 TPS) | 50 | 25 | 1000ms |
+| Medium (10-50 TPS) | 100 | 50 | 1000ms |
+| Large (50-200 TPS) | 500 | 250 | 500ms |
+| Very Large (200+ TPS) | 1000 | 500 | 500ms |
+
+**Formula:**
+- `high_threshold` ≈ `max_sessions` × `avg_transaction_time_seconds`
+- `low_threshold` = `high_threshold` × 0.5
+- `check_interval` = 1000ms (reduce to 500ms for very high traffic)
+
+### Benefits of Graceful Throttling
+
+**Compared to TCP Connection Rejection:**
+
+| Aspect | Graceful (Code 91) | TCP Rejection |
+|--------|-------------------|---------------|
+| **Client Experience** | ✅ Receives proper ISO-8583 response | ❌ Connection refused error |
+| **Error Handling** | ✅ Standard response code handling | ❌ Network-level exception |
+| **Monitoring** | ✅ Trackable via response codes | ❌ Connection attempts not logged |
+| **Retry Logic** | ✅ Clients can implement smart retry | ⚠️ May trigger retry storms |
+| **Standards Compliance** | ✅ ISO-8583 compliant | ❌ Non-standard error |
+
+### Implementation Details
+
+**Components:**
+
+1. **QueueMonitor.java** (`src/main/java/com/example/atm/QueueMonitor.java:24`)
+   - Background thread checking queue size every 1 second
+   - Uses `LocalSpace.size(queueName)` to get queue depth
+   - Sets shared throttle flag via `ThrottleManager`
+
+2. **ThrottleManager.java** (`src/main/java/com/example/atm/ThrottleManager.java:9`)
+   - Singleton with `AtomicBoolean` for thread-safe state
+   - Used by both QueueMonitor and ThrottleAwareRequestListener
+
+3. **ThrottleAwareRequestListener.java** (`src/main/java/com/example/atm/ThrottleAwareRequestListener.java:27`)
+   - Checks `ThrottleManager.isThrottled()` before queueing
+   - Returns ISO-8583 response with code 91 when throttled
+   - Accepts TCP connection but doesn't queue to Space
+
+For complete documentation, see [`THROTTLING.md`](THROTTLING.md).
 
 ## Configuration
 

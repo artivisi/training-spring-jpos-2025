@@ -1,0 +1,16 @@
+<queue-monitor class="com.example.atm.QueueMonitor" logger="Q2" realm="queue-monitor">
+    <!-- Space to monitor -->
+    <property name="space" value="tspace:default" />
+
+    <!-- Queue name to monitor -->
+    <property name="queue" value="txnmgr" />
+
+    <!-- Check interval in milliseconds (how often to check the queue size) -->
+    <property name="check-interval" value="1000" />
+
+    <!-- High threshold: when queue size reaches this value, enable throttle mode -->
+    <property name="high-threshold" value="100" />
+
+    <!-- Low threshold: when queue size drops to this value, disable throttle mode -->
+    <property name="low-threshold" value="50" />
+</queue-monitor>
