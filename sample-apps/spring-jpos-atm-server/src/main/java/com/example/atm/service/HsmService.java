@@ -1,46 +1,61 @@
 package com.example.atm.service;
 
-import com.example.atm.config.HsmProperties;
-import com.example.atm.dto.hsm.PinBlockVerificationRequest;
-import com.example.atm.dto.hsm.PinBlockVerificationResponse;
+import com.example.atm.entity.Account;
+import com.example.atm.entity.PinVerificationType;
+import com.example.atm.service.strategy.PinVerificationStrategy;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/**
+ * Service for HSM operations including PIN verification.
+ * Uses Strategy pattern to support multiple verification methods.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class HsmService {
 
-    private final HsmClient hsmClient;
-    private final HsmProperties hsmProperties;
+    private final List<PinVerificationStrategy> strategies;
+    private Map<PinVerificationType, PinVerificationStrategy> strategyMap;
 
-    public boolean verifyPinBlock(String pinBlockUnderTPK, String pinBlockUnderLMK, String pan) {
-        try {
-            log.info("Verifying PIN block with HSM using Method A (Verify with Translation)");
+    @PostConstruct
+    public void init() {
+        strategyMap = strategies.stream()
+                .collect(Collectors.toMap(
+                        PinVerificationStrategy::getType,
+                        Function.identity()
+                ));
+        log.info("Initialized {} PIN verification strategies: {}",
+                strategyMap.size(), strategyMap.keySet());
+    }
 
-            PinBlockVerificationRequest request = PinBlockVerificationRequest.builder()
-                    .pinBlockUnderTPK(pinBlockUnderTPK)
-                    .pinBlockUnderLMK(pinBlockUnderLMK)
-                    .terminalId(hsmProperties.getPin().getTerminalId())
-                    .pan(pan)
-                    .pinFormat(hsmProperties.getPin().getFormat())
-                    .build();
+    /**
+     * Verify PIN using the account's configured verification method.
+     *
+     * @param pinBlockFromTerminal PIN block from terminal, encrypted under TPK
+     * @param pan Primary Account Number
+     * @param account Account entity containing verification type and stored credentials
+     * @return true if PIN is valid, false otherwise
+     */
+    public boolean verifyPin(String pinBlockFromTerminal, String pan, Account account) {
+        PinVerificationType type = account.getPinVerificationType();
+        PinVerificationStrategy strategy = strategyMap.get(type);
 
-            PinBlockVerificationResponse response = hsmClient.verifyPinBlock(request);
-
-            if (response.isValid()) {
-                log.info("PIN verification successful. TPK: {}, LMK: {}, Format: {}",
-                        response.getTpkKeyId(), response.getLmkKeyId(), response.getPinFormat());
-                return true;
-            } else {
-                log.warn("PIN verification failed. Message: {}", response.getMessage());
-                return false;
-            }
-
-        } catch (Exception e) {
-            log.error("Error communicating with HSM. Error: {}", e.getMessage(), e);
-            throw new RuntimeException("HSM communication error", e);
+        if (strategy == null) {
+            log.error("No strategy found for verification type: {}", type);
+            throw new RuntimeException("Unsupported PIN verification type: " + type);
         }
+
+        log.info("Using {} verification strategy for account: {}",
+                type, account.getAccountNumber());
+
+        return strategy.verify(pinBlockFromTerminal, pan, account);
     }
 }

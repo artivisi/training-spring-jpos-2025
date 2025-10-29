@@ -47,6 +47,14 @@ public class Account {
     @Column(name = "encrypted_pin_block", length = 32)
     private String encryptedPinBlock;
 
+    @Column(name = "pvv", length = 4)
+    private String pvv;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "pin_verification_type", nullable = false, length = 20)
+    private PinVerificationType pinVerificationType = PinVerificationType.ENCRYPTED_PIN_BLOCK;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

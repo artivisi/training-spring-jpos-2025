@@ -116,6 +116,14 @@ public class BankService {
                 .build();
     }
 
+    /**
+     * Verify PIN against account's stored credentials.
+     * Uses account's configured verification method (ENCRYPTED_PIN_BLOCK or PVV).
+     *
+     * @param accountNumber Account number to verify PIN for
+     * @param pinBlock PIN block from terminal, encrypted under TPK
+     * @param pan Primary Account Number
+     */
     public void verifyPin(String accountNumber, String pinBlock, String pan) {
         log.info("Verifying PIN for account: {}", accountNumber);
 
@@ -128,17 +136,7 @@ public class BankService {
                 .orElseThrow(() -> new AccountNotFoundException(
                         "Account not found: " + accountNumber));
 
-        String storedPinBlock = account.getEncryptedPinBlock();
-        if (storedPinBlock == null || storedPinBlock.isEmpty()) {
-            log.error("No PIN configured for account: {}", accountNumber);
-            throw new RuntimeException("PIN verification required but not configured");
-        }
-
-        boolean pinValid = hsmService.verifyPinBlock(
-                pinBlock,
-                storedPinBlock,
-                pan
-        );
+        boolean pinValid = hsmService.verifyPin(pinBlock, pan, account);
 
         if (!pinValid) {
             log.warn("Invalid PIN for account: {}", accountNumber);

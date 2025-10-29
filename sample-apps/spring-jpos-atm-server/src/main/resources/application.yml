@@ -44,8 +44,10 @@ jpos:
 hsm:
   url: http://localhost:8080
   pin:
-    verification:
+    encrypted-pin-block:
       endpoint: /api/hsm/pin/verify-with-translation
+    pvv:
+      endpoint: /api/hsm/pin/verify-with-pvv
     terminal-id: ATM00001
     format: ISO_0
   connection:

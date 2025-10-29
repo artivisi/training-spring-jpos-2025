@@ -20,9 +20,11 @@ public class HsmConfig {
 
     @Bean
     public RestClient hsmRestClient() {
-        String baseUrl = hsmProperties.getUrl() + hsmProperties.getPin().getVerification().getEndpoint();
+        String baseUrl = hsmProperties.getUrl();
 
         log.info("Configuring HSM RestClient with base URL: {}", baseUrl);
+        log.info("  Encrypted PIN Block endpoint: {}", hsmProperties.getPin().getEncryptedPinBlock().getEndpoint());
+        log.info("  PVV endpoint: {}", hsmProperties.getPin().getPvv().getEndpoint());
 
         return RestClient.builder()
                 .baseUrl(baseUrl)

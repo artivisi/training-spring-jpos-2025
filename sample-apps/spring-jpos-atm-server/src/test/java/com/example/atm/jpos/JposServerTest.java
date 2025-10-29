@@ -2,7 +2,9 @@ package com.example.atm.jpos;
 
 import com.example.atm.dto.hsm.PinBlockVerificationRequest;
 import com.example.atm.dto.hsm.PinBlockVerificationResponse;
-import com.example.atm.service.HsmService;
+import com.example.atm.dto.hsm.PvvVerificationRequest;
+import com.example.atm.dto.hsm.PvvVerificationResponse;
+import com.example.atm.service.HsmClient;
 import com.example.atm.util.PinBlockGenerator;
 import lombok.extern.slf4j.Slf4j;
 import org.jpos.iso.ISOException;
@@ -14,7 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -41,8 +43,8 @@ class JposServerTest {
     @Value("${test.tpk.key}")
     private String tpkKey;
 
-    @MockBean
-    private HsmService hsmService;
+    @MockitoBean
+    private HsmClient hsmClient;
 
     private BaseChannel channel;
     private static final String HOST = "localhost";
@@ -55,23 +57,29 @@ class JposServerTest {
         log.info("Packager class: {}", packagerClass);
         log.info("TPK Key: {}", tpkKey);
 
-        // Mock HSM service to always return true for valid PINs
-        when(hsmService.verifyPinBlock(anyString(), anyString(), anyString()))
+        // Mock HSM client to always return successful verification for valid stored PIN blocks
+        when(hsmClient.verifyPinBlock(any(PinBlockVerificationRequest.class)))
                 .thenAnswer(invocation -> {
-                    String incomingPinBlock = invocation.getArgument(0);
-                    String storedPinBlock = invocation.getArgument(1);
-                    String pan = invocation.getArgument(2);
+                    PinBlockVerificationRequest request = invocation.getArgument(0);
+                    String storedPinBlock = request.getPinBlockUnderLMK();
 
-                    log.info("Mock HSM verifying PIN block");
+                    log.info("Mock HSM client verifying PIN block");
 
                     // For test accounts with stored PIN blocks, return true
                     // Account 1234567890 has PIN 1234, stored PIN: ABCD1234567890ABCDEF1234567890AB
                     // Account 0987654321 has PIN 5678, stored PIN: 5678ABCDEF1234567890ABCDEF123456
-                    if (storedPinBlock.startsWith("ABCD") || storedPinBlock.startsWith("5678")) {
-                        return true;
-                    }
+                    boolean isValid = storedPinBlock != null &&
+                                     (storedPinBlock.startsWith("ABCD") || storedPinBlock.startsWith("5678"));
 
-                    return false;
+                    return PinBlockVerificationResponse.builder()
+                            .valid(isValid)
+                            .message(isValid ? "PIN verification successful" : "PIN verification failed")
+                            .terminalId(request.getTerminalId())
+                            .pan(request.getPan())
+                            .pinFormat(request.getPinFormat().getValue())
+                            .lmkKeyId("lmk-test-001")
+                            .tpkKeyId("tpk-test-001")
+                            .build();
                 });
 
         // Instantiate packager from configuration
@@ -147,9 +155,17 @@ class JposServerTest {
     void testBalanceInquiryInvalidPin() throws ISOException, IOException {
         log.info("Testing balance inquiry with invalid PIN");
 
-        // Mock HSM to return false for wrong PIN
-        when(hsmService.verifyPinBlock(anyString(), anyString(), anyString()))
-                .thenReturn(false);
+        // Mock HSM client to return invalid response
+        when(hsmClient.verifyPinBlock(any(PinBlockVerificationRequest.class)))
+                .thenReturn(PinBlockVerificationResponse.builder()
+                        .valid(false)
+                        .message("PIN verification failed")
+                        .terminalId("ATM00001")
+                        .pan(TEST_PAN)
+                        .pinFormat("ISO-0")
+                        .lmkKeyId("lmk-test-001")
+                        .tpkKeyId("tpk-test-001")
+                        .build());
 
         ISOMsg request = createBalanceInquiryRequest("1234567890", "9999");
 

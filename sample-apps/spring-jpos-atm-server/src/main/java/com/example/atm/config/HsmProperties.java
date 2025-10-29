@@ -15,12 +15,18 @@ public class HsmProperties {
 
     @Data
     public static class Pin {
-        private Verification verification;
+        private EncryptedPinBlock encryptedPinBlock;
+        private Pvv pvv;
         private String terminalId;
         private PinFormat format;
 
         @Data
-        public static class Verification {
+        public static class EncryptedPinBlock {
+            private String endpoint;
+        }
+
+        @Data
+        public static class Pvv {
             private String endpoint;
         }
     }
