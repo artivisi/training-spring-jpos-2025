@@ -239,25 +239,36 @@ The application will start on `http://localhost:8080`
 
 ## Configuration
 
-**Database configuration (`application.properties`):**
+**Application configuration (`application.yml`):**
 
-```properties
-spring.datasource.url=jdbc:postgresql://localhost:5432/atm_db
-spring.datasource.username=your_username
-spring.datasource.password=your_password
-spring.jpa.hibernate.ddl-auto=update
-spring.jpa.show-sql=true
-```
+```yaml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/atm_db
+    username: atm_user
+    password: atm_password
 
-**jPOS configuration:**
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
 
-```properties
-# jPOS Channel Configuration
-jpos.channel.host=localhost
-jpos.channel.port=8000
-jpos.channel.timeout=30000
-jpos.channel.type=ASCIIChannel
-jpos.packager.type=Base24Packager
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+jpos:
+  channel:
+    class: org.jpos.iso.channel.ASCIIChannel
+    host: localhost
+    port: 8000
+    timeout: 30000
+  packager:
+    class: org.jpos.iso.packager.Base24Packager
+  mux:
+    name: atm-mux
+  q2:
+    deployDir: deploy
 ```
 
 ## Logging
@@ -265,7 +276,7 @@ jpos.packager.type=Base24Packager
 The application provides verbose logging for:
 - **PIN Block Calculation** - Detailed steps of PIN encryption (ISO Format 0)
 - **ISO 8583 Message Construction** - Field-by-field message building with Base24Packager
-- **ASCIIChannel Communication** - Request/response transmission logs
+- **MUX Communication** - Request/response via QMUX with automatic correlation
 - **Message Packing/Unpacking** - BASE24 format serialization details
 - **Request/Response Flow** - Complete transaction lifecycle
 
@@ -283,10 +294,12 @@ The application provides verbose logging for:
   - Field 2 (PAN): 4111111111111111
   - Field 3 (Processing Code): 310000
   - Field 4 (Amount): 000000010000
+  - Field 11 (STAN): 123456
   - Field 52 (PIN Block): 041234FFFFFFFFFF
 
-[INFO] ASCIIChannel - Sending message to localhost:8000
-[INFO] ASCIIChannel - Received response with MTI: 0210
+[INFO] Sending ISO 8583 message via MUX: atm-mux
+[INFO] MUX - Request sent, waiting for response (timeout: 30s)
+[INFO] MUX - Response received, MTI: 0210
 [INFO] Response Code: 00 (Approved)
 ```
 
@@ -316,13 +329,7 @@ spring-jpos-atm-simulator/
 │   │   │               │
 │   │   │               ├── jpos/
 │   │   │               │   ├── config/
-│   │   │               │   │   ├── JposConfiguration.java
-│   │   │               │   │   └── Q2Configuration.java
-│   │   │               │   ├── channel/
-│   │   │               │   │   ├── AtmChannelAdaptor.java
-│   │   │               │   │   └── ChannelManager.java
-│   │   │               │   ├── packager/
-│   │   │               │   │   └── CustomBase24Packager.java
+│   │   │               │   │   └── JposConfiguration.java
 │   │   │               │   ├── participant/
 │   │   │               │   │   ├── BalanceInquiryParticipant.java
 │   │   │               │   │   ├── WithdrawalParticipant.java
@@ -357,39 +364,24 @@ spring-jpos-atm-simulator/
 │   │   │
 │   │   └── resources/
 │   │       ├── application.yml
-│   │       ├── application-dev.yml
-│   │       ├── application-prod.yml
 │   │       │
 │   │       ├── deploy/                     # jPOS Q2 deployment descriptors
 │   │       │   ├── 10_logger.xml
+│   │       │   ├── 15_mux.xml
 │   │       │   ├── 20_channelAdaptor.xml
 │   │       │   ├── 30_txnmgr.xml
 │   │       │   └── 99_sysmon.xml
 │   │       │
-│   │       ├── jpos/                       # jPOS configuration files
-│   │       │   ├── packager/
-│   │       │   │   ├── base24-atm.xml
-│   │       │   │   └── base24-field-config.xml
-│   │       │   ├── channel/
-│   │       │   │   └── atm-channel.cfg
-│   │       │   └── cfg/
-│   │       │       └── default.cfg
-│   │       │
 │   │       ├── db/
-│   │       │   └── migration/              # Flyway/Liquibase migrations
-│   │       │       ├── V1__create_accounts_table.sql
-│   │       │       ├── V2__create_transactions_table.sql
-│   │       │       ├── V3__create_crypto_keys_table.sql
-│   │       │       └── V4__seed_data.sql
+│   │       │   └── migration/              # Flyway migrations
+│   │       │       ├── V1__create_schema.sql
+│   │       │       └── V2__seed_data.sql
 │   │       │
 │   │       ├── templates/                   # Thymeleaf templates
 │   │       │   ├── index.html
-│   │       │   ├── transaction.html
 │   │       │   └── key-management.html
 │   │       │
 │   │       ├── static/
-│   │       │   ├── css/
-│   │       │   │   └── tailwind.css
 │   │       │   └── js/
 │   │       │       └── app.js
 │   │       │
@@ -401,16 +393,6 @@ spring-jpos-atm-simulator/
 │       │   └── com/
 │       │       └── example/
 │       │           └── atm/
-│       │               ├── service/
-│       │               │   └── AccountServiceTest.java
-│       │               ├── jpos/
-│       │               │   ├── service/
-│       │               │   │   └── ISO8583MessageBuilderTest.java
-│       │               │   └── participant/
-│       │               │       └── BalanceInquiryParticipantTest.java
-│       │               └── web/
-│       │                   └── controller/
-│       │                       └── AtmControllerTest.java
 │       └── resources/
 │           └── application-test.yml
 │
@@ -426,24 +408,19 @@ spring-jpos-atm-simulator/
 #### jPOS Integration (`src/main/java/.../jpos/`)
 
 **config/** - Spring Boot integration configuration for jPOS
-- `JposConfiguration.java` - Initializes jPOS components as Spring beans
-- `Q2Configuration.java` - Configures Q2 container lifecycle
-
-**channel/** - Channel management and adapters
-- `AtmChannelAdaptor.java` - Bridges Spring services with jPOS channels
-- `ChannelManager.java` - Manages channel lifecycle and connection pooling
-
-**packager/** - Custom packager implementations
-- `CustomBase24Packager.java` - Extended Base24 packager with custom fields
+- `JposConfiguration.java` - Configures Q2 container and MUX name as Spring beans
+- Uses built-in jPOS ASCIIChannel and Base24Packager (no custom wrappers)
+- QMUX is configured via XML deployment descriptors
 
 **participant/** - Transaction participant implementations
 - Transaction-specific participants implementing jPOS TransactionParticipant interface
 - Each participant handles specific business logic (balance inquiry, withdrawal, PIN verification)
+- Used by Q2 TransactionManager
 
 **service/** - jPOS-specific services
-- `ISO8583MessageBuilder.java` - Builds ISO 8583 messages
-- `PINBlockService.java` - PIN block calculation and encryption
-- `MessageValidator.java` - Validates ISO message structure
+- `ISO8583MessageBuilder.java` - Builds ISO 8583 messages using Base24Packager
+- `PINBlockService.java` - PIN block calculation and encryption (ISO Format 0)
+- `MessageValidator.java` - Validates ISO message structure and response codes
 
 **listener/** - jPOS request listeners
 - `TransactionListener.java` - Listens for incoming ISO 8583 transactions
@@ -452,24 +429,25 @@ spring-jpos-atm-simulator/
 
 **deploy/** - Q2 deployment descriptors (XML files defining Q2 services)
 - Loaded by Q2 container on startup
-- Numbered prefix ensures load order
-
-**jpos/** - jPOS-specific configuration files
-- `packager/` - XML packager definitions
-- `channel/` - Channel configuration
-- `cfg/` - Environment-specific jPOS settings
+- Numbered prefix ensures load order (10, 15, 20, 30, 99)
+- `15_mux.xml` - QMUX for request/response matching and concurrent transaction handling
+- Uses built-in ASCIIChannel and Base24Packager classes
 
 **db/migration/** - Database version control
-- Flyway or Liquibase migration scripts
+- Flyway migration scripts
+- `V1__create_schema.sql` - All table definitions
+- `V2__seed_data.sql` - Sample/seed data
 - Uses UUID primary keys and id_tablename foreign key naming
 
 #### Domain Layer (`domain/`)
 
 **model/** - JPA entities with UUID primary keys
-- `Account.java` - Uses `@Id @GeneratedValue(generator = "UUID")`
-- Foreign keys follow `id_tablename` convention
+- `Account.java` - Uses `@Id @GeneratedValue(strategy = GenerationType.UUID)`
+- `Transaction.java` - Foreign key named `id_accounts`
+- `CryptoKey.java` - Manages TMK, TPK, TSK keys
 
 **repository/** - Spring Data JPA repositories
+- Standard repository interfaces extending JpaRepository
 
 ## Usage Examples
 
