@@ -12,3 +12,18 @@ VALUES
     ('1234567890', 'John Doe', 5000000.00, 'IDR', 'SAVINGS', 'ACTIVE', '25BBDAB69938C6289C66975BF9315606D945728BF4870C7AB478898DF4E765C4', NULL, 'ENCRYPTED_PIN_BLOCK'),
     ('0987654321', 'Jane Smith', 3000000.00, 'IDR', 'CHECKING', 'ACTIVE', NULL, '0187', 'PVV'),
     ('5555555555', 'Bob Johnson', 10000000.00, 'IDR', 'SAVINGS', 'ACTIVE', NULL, NULL, 'ENCRYPTED_PIN_BLOCK');
+
+-- Insert sample cryptographic keys for TRM-ISS001-ATM-001 terminal
+-- These keys match the HSM simulator sample data
+
+-- TPK (Terminal PIN Key) - Version 1 (ACTIVE)
+-- Key from HSM seed data: TPK-TRM-ISS001-ATM-001
+INSERT INTO crypto_keys (key_type, terminal_id, bank_uuid, key_value, status, key_version, effective_from)
+VALUES
+    ('TPK', 'TRM-ISS001-ATM-001', '48a9e84c-ff57-4483-bf83-b255f34a6466', '246A31D729B280DD7FCDA3BB7F187ABFA1BB0811D7EF3D68FDCA63579F3748B0', 'ACTIVE', 1, CURRENT_TIMESTAMP);
+
+-- TSK (Terminal Security Key for MAC) - Version 1 (ACTIVE)
+-- Key from HSM seed data: TSK-TRM-ISS001-ATM-001
+INSERT INTO crypto_keys (key_type, terminal_id, bank_uuid, key_value, status, key_version, effective_from)
+VALUES
+    ('TSK', 'TRM-ISS001-ATM-001', '48a9e84c-ff57-4483-bf83-b255f34a6466', '3AC638783EF600FE5E25E8A2EE5B0D222EB810DDF64C3681DD11AFEFAF41614B', 'ACTIVE', 1, CURRENT_TIMESTAMP);

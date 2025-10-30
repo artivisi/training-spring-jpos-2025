@@ -30,9 +30,9 @@ public class PinBlockGenerator {
         try {
             // AES uses ISO 9564 PIN blocks
             byte[] clearPinBlock = AesPinBlockUtil.buildClearPinBlock(clearPin, pan, format);
-            byte[] tpkBytes = AesPinBlockUtil.hexToBytes(tpkHex);
+            byte[] tpkBytes = CryptoUtil.hexToBytes(tpkHex);
             byte[] encrypted = AesPinBlockUtil.encryptPinBlock(clearPinBlock, tpkBytes, bankUuid);
-            return AesPinBlockUtil.bytesToHex(encrypted);
+            return CryptoUtil.bytesToHex(encrypted);
         } catch (Exception e) {
             log.error("Error generating PIN block: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to generate PIN block", e);

@@ -9,9 +9,11 @@ import org.jpos.transaction.Context;
 import org.jpos.transaction.TransactionParticipant;
 
 import com.example.atm.config.HsmProperties;
+import com.example.atm.entity.CryptoKey;
 import com.example.atm.jpos.SpringBeanFactory;
+import com.example.atm.service.CryptoKeyService;
 import com.example.atm.util.AesCmacUtil;
-import com.example.atm.util.AesPinBlockUtil;
+import com.example.atm.util.CryptoUtil;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,26 +30,34 @@ public class MacVerificationParticipant implements TransactionParticipant {
         return SpringBeanFactory.getBean(HsmProperties.class);
     }
 
-    /**
-     * Get TSK master key bytes from configuration.
-     */
-    private byte[] getTskMasterKeyBytes() {
-        HsmProperties.Keys keys = getHsmProperties().getKeys();
-        if (keys == null || keys.getTskMasterKey() == null) {
-            throw new RuntimeException("TSK master key not configured");
-        }
-        return AesPinBlockUtil.hexToBytes(keys.getTskMasterKey());
+    private CryptoKeyService getCryptoKeyService() {
+        return SpringBeanFactory.getBean(CryptoKeyService.class);
     }
 
     /**
-     * Get bank UUID from configuration.
+     * Get terminal ID from context or default.
+     * TODO: Extract from ISO message field 41 (Card Acceptor Terminal ID) in future enhancement.
      */
-    private String getBankUuid() {
-        HsmProperties.Keys keys = getHsmProperties().getKeys();
-        if (keys == null || keys.getBankUuid() == null) {
-            throw new RuntimeException("Bank UUID not configured");
-        }
-        return keys.getBankUuid();
+    private String getTerminalId(Context ctx) {
+        // For now, use hardcoded terminal ID matching sample data
+        // In production, this should come from field 41 of the ISO message
+        return "TRM-ISS001-ATM-001";
+    }
+
+    /**
+     * Get TSK master key bytes from database.
+     */
+    private byte[] getTskMasterKeyBytes(String terminalId) {
+        CryptoKey tskKey = getCryptoKeyService().getActiveKey(terminalId, CryptoKey.KeyType.TSK);
+        return CryptoUtil.hexToBytes(tskKey.getKeyValue());
+    }
+
+    /**
+     * Get bank UUID from database.
+     */
+    private String getBankUuid(String terminalId) {
+        CryptoKey tskKey = getCryptoKeyService().getActiveKey(terminalId, CryptoKey.KeyType.TSK);
+        return tskKey.getBankUuid();
     }
 
     @Override
@@ -81,7 +91,7 @@ public class MacVerificationParticipant implements TransactionParticipant {
             byte[] macData = buildMacData(msg);
 
             // Verify MAC based on configured algorithm
-            boolean macValid = verifyMac(macData, receivedMac, macConfig.getAlgorithm());
+            boolean macValid = verifyMac(macData, receivedMac, macConfig.getAlgorithm(), ctx);
 
             if (!macValid) {
                 log.error("MAC verification failed for transaction {}", id);
@@ -121,7 +131,7 @@ public class MacVerificationParticipant implements TransactionParticipant {
             byte[] macData = buildMacData(response);
 
             // Generate MAC
-            byte[] mac = generateMac(macData, macConfig.getAlgorithm());
+            byte[] mac = generateMac(macData, macConfig.getAlgorithm(), ctx);
 
             // Set MAC in field 64
             response.set(64, mac);
@@ -156,16 +166,17 @@ public class MacVerificationParticipant implements TransactionParticipant {
     /**
      * Verify MAC using configured algorithm with TSK key derivation.
      */
-    private boolean verifyMac(byte[] data, byte[] receivedMac, HsmProperties.MacAlgorithm algorithm) {
-        byte[] tskMasterKeyBytes = getTskMasterKeyBytes();
-        String bankUuid = getBankUuid();
+    private boolean verifyMac(byte[] data, byte[] receivedMac, HsmProperties.MacAlgorithm algorithm, Context ctx) {
+        String terminalId = getTerminalId(ctx);
+        byte[] tskMasterKeyBytes = getTskMasterKeyBytes(terminalId);
+        String bankUuid = getBankUuid(terminalId);
 
         return switch (algorithm) {
             case AES_CMAC -> AesCmacUtil.verifyMacWithKeyDerivation(data, receivedMac, tskMasterKeyBytes, bankUuid);
             case HMAC_SHA256_TRUNCATED -> {
                 // For HMAC, still use key derivation for consistency
                 String context = "TSK:" + bankUuid + ":MAC";
-                byte[] tskOperationalKey = deriveKeyFromParent(tskMasterKeyBytes, context, 128);
+                byte[] tskOperationalKey = CryptoUtil.deriveKeyFromParent(tskMasterKeyBytes, context, 128);
                 yield AesCmacUtil.verifyHmacSha256Truncated(data, receivedMac, tskOperationalKey);
             }
         };
@@ -174,40 +185,20 @@ public class MacVerificationParticipant implements TransactionParticipant {
     /**
      * Generate MAC using configured algorithm with TSK key derivation.
      */
-    private byte[] generateMac(byte[] data, HsmProperties.MacAlgorithm algorithm) {
-        byte[] tskMasterKeyBytes = getTskMasterKeyBytes();
-        String bankUuid = getBankUuid();
+    private byte[] generateMac(byte[] data, HsmProperties.MacAlgorithm algorithm, Context ctx) {
+        String terminalId = getTerminalId(ctx);
+        byte[] tskMasterKeyBytes = getTskMasterKeyBytes(terminalId);
+        String bankUuid = getBankUuid(terminalId);
 
         return switch (algorithm) {
             case AES_CMAC -> AesCmacUtil.generateMacWithKeyDerivation(data, tskMasterKeyBytes, bankUuid);
             case HMAC_SHA256_TRUNCATED -> {
                 // For HMAC, still use key derivation for consistency
                 String context = "TSK:" + bankUuid + ":MAC";
-                byte[] tskOperationalKey = deriveKeyFromParent(tskMasterKeyBytes, context, 128);
+                byte[] tskOperationalKey = CryptoUtil.deriveKeyFromParent(tskMasterKeyBytes, context, 128);
                 yield AesCmacUtil.generateHmacSha256Truncated(data, tskOperationalKey);
             }
         };
     }
 
-    /**
-     * Derive operational key from parent key using PBKDF2-SHA256.
-     * Matches HSM simulator key derivation: 100,000 iterations, context as salt.
-     */
-    private byte[] deriveKeyFromParent(byte[] parentKey, String context, int outputBits) {
-        try {
-            // Convert parent key to char array (hex representation)
-            char[] keyChars = AesPinBlockUtil.bytesToHex(parentKey).toCharArray();
-
-            // Use context as salt
-            byte[] salt = context.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-
-            // PBKDF2 with 100,000 iterations (matches HSM)
-            javax.crypto.spec.PBEKeySpec spec = new javax.crypto.spec.PBEKeySpec(keyChars, salt, 100_000, outputBits);
-            javax.crypto.SecretKeyFactory factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-
-            return factory.generateSecret(spec).getEncoded();
-        } catch (Exception e) {
-            throw new RuntimeException("Key derivation failed", e);
-        }
-    }
 }

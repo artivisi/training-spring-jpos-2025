@@ -6,11 +6,8 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 
-import java.nio.charset.StandardCharsets;
 import java.security.Security;
 
 /**
@@ -55,7 +52,7 @@ public class AesPinBlockUtil {
       try {
           // Step 1: Derive operational key from master key
           String context = "TPK:" + bankUuid + ":PIN";
-          byte[] tpkOperationalKey = deriveKeyFromParent(tpkMasterKeyBytes, context, 128); // 128 bits = 16 bytes
+          byte[] tpkOperationalKey = CryptoUtil.deriveKeyFromParent(tpkMasterKeyBytes, context, 128); // 128 bits = 16 bytes
 
           // Step 2: Generate random IV (16 bytes)
           byte[] iv = new byte[16];
@@ -81,25 +78,6 @@ public class AesPinBlockUtil {
       }
   }
 
-  // Helper method: PBKDF2 key derivation
-  private static byte[] deriveKeyFromParent(byte[] parentKey, String context, int outputBits) {
-      try {
-          // Convert parent key to char array
-          char[] keyChars = bytesToHex(parentKey).toCharArray();
-
-          // Use context as salt
-          byte[] salt = context.getBytes(StandardCharsets.UTF_8);
-
-          // PBKDF2 with 100,000 iterations
-          PBEKeySpec spec = new PBEKeySpec(keyChars, salt, 100_000, outputBits);
-          SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-
-          return factory.generateSecret(spec).getEncoded();
-      } catch (Exception e) {
-          throw new RuntimeException("Key derivation failed", e);
-      }
-  }
-
     /**
    * Decrypt a PIN block using AES-128-CBC with PKCS5Padding.
    * Input format: IV (16 bytes) || Ciphertext (16 bytes) = 32 bytes total.
@@ -121,7 +99,7 @@ public class AesPinBlockUtil {
       try {
           // Step 1: Derive operational key from master key
           String context = "TPK:" + bankUuid + ":PIN";
-          byte[] tpkOperationalKey = deriveKeyFromParent(tpkMasterKeyBytes, context, 128); // 16 bytes
+          byte[] tpkOperationalKey = CryptoUtil.deriveKeyFromParent(tpkMasterKeyBytes, context, 128); // 16 bytes
 
           // Step 2: Extract IV (first 16 bytes) and ciphertext (last 16 bytes)
           byte[] iv = new byte[16];
@@ -363,29 +341,5 @@ public class AesPinBlockUtil {
         }
 
         return pin.toString();
-    }
-
-    /**
-     * Convert hex string to byte array.
-     */
-    public static byte[] hexToBytes(String hex) {
-        int len = hex.length();
-        byte[] data = new byte[len / 2];
-        for (int i = 0; i < len; i += 2) {
-            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
-                    + Character.digit(hex.charAt(i + 1), 16));
-        }
-        return data;
-    }
-
-    /**
-     * Convert byte array to hex string.
-     */
-    public static String bytesToHex(byte[] bytes) {
-        StringBuilder result = new StringBuilder();
-        for (byte b : bytes) {
-            result.append(String.format("%02X", b));
-        }
-        return result.toString();
     }
 }

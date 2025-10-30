@@ -21,7 +21,7 @@ import org.springframework.test.context.TestPropertySource;
 
 import com.example.atm.dto.hsm.PinFormat;
 import com.example.atm.entity.PinEncryptionAlgorithm;
-import com.example.atm.util.AesPinBlockUtil;
+import com.example.atm.util.CryptoUtil;
 import com.example.atm.util.PinBlockGenerator;
 
 import lombok.extern.slf4j.Slf4j;
@@ -345,7 +345,7 @@ class JposServerIntegrationTest {
         byte[] macData = msg.pack();
 
         // Convert TSK master key to bytes
-        byte[] tskMasterKeyBytes = AesPinBlockUtil.hexToBytes(tskKey);
+        byte[] tskMasterKeyBytes = CryptoUtil.hexToBytes(tskKey);
 
         // Generate MAC with key derivation (TSK master → operational key)
         byte[] mac = com.example.atm.util.AesCmacUtil.generateMacWithKeyDerivation(
@@ -409,7 +409,7 @@ class JposServerIntegrationTest {
                     clearPin, TEST_PAN, tpkKey, bankUuid,
                     PinEncryptionAlgorithm.AES_256, PinFormat.ISO_0);
             // Convert hex string to bytes for binary field
-            msg.set(123, AesPinBlockUtil.hexToBytes(pinBlock));
+            msg.set(123, CryptoUtil.hexToBytes(pinBlock));
         }
 
         // Field 102: Account Number
@@ -462,7 +462,7 @@ class JposServerIntegrationTest {
                     clearPin, TEST_PAN, tpkKey, bankUuid,
                     PinEncryptionAlgorithm.AES_256, PinFormat.ISO_0);
             // Convert hex string to bytes for binary field
-            msg.set(123, AesPinBlockUtil.hexToBytes(pinBlock));
+            msg.set(123, CryptoUtil.hexToBytes(pinBlock));
         }
 
         // Field 102: Account Number

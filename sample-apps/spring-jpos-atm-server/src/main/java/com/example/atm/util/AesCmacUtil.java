@@ -7,9 +7,6 @@ import org.bouncycastle.crypto.engines.AESEngine;
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.PBEKeySpec;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.Security;
 
@@ -47,7 +44,7 @@ public class AesCmacUtil {
 
         // Derive operational key: TSK master (32 bytes) → operational (16 bytes)
         String context = "TSK:" + bankUuid + ":MAC";
-        byte[] tskOperationalKey = deriveKeyFromParent(tskMasterKeyBytes, context, 128);
+        byte[] tskOperationalKey = CryptoUtil.deriveKeyFromParent(tskMasterKeyBytes, context, 128);
 
         return generateMac(data, tskOperationalKey);
     }
@@ -110,47 +107,6 @@ public class AesCmacUtil {
             log.error("Failed to generate AES-CMAC", e);
             throw new RuntimeException("AES-CMAC generation failed", e);
         }
-    }
-
-    /**
-     * Derive operational key from parent key using PBKDF2-SHA256.
-     * Matches HSM simulator key derivation: 100,000 iterations, context as salt.
-     *
-     * @param parentKey Parent key bytes (e.g., 32-byte master key)
-     * @param context Context string (e.g., "TSK:UUID:MAC")
-     * @param outputBits Output key size in bits (e.g., 128 for 16 bytes)
-     * @return Derived key bytes
-     */
-    private static byte[] deriveKeyFromParent(byte[] parentKey, String context, int outputBits) {
-        try {
-            // Convert parent key to char array (hex representation)
-            char[] keyChars = bytesToHex(parentKey).toCharArray();
-
-            // Use context as salt
-            byte[] salt = context.getBytes(StandardCharsets.UTF_8);
-
-            // PBKDF2 with 100,000 iterations (matches HSM)
-            PBEKeySpec spec = new PBEKeySpec(keyChars, salt, 100_000, outputBits);
-            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
-
-            byte[] derived = factory.generateSecret(spec).getEncoded();
-            log.debug("Derived {}-bit key from {}-byte parent key using context: {}",
-                     outputBits, parentKey.length, context);
-            return derived;
-        } catch (Exception e) {
-            throw new RuntimeException("Key derivation failed", e);
-        }
-    }
-
-    /**
-     * Convert byte array to hex string.
-     */
-    private static String bytesToHex(byte[] bytes) {
-        StringBuilder result = new StringBuilder();
-        for (byte b : bytes) {
-            result.append(String.format("%02X", b));
-        }
-        return result.toString();
     }
 
     /**
