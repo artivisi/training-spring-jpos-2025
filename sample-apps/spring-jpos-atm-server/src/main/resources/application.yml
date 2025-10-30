@@ -3,10 +3,9 @@ spring:
     name: spring-jpos-atm-server
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/bankdb
+    url: jdbc:postgresql://localhost:54322/bankdb
     username: bankuser
     password: bankpass
-    driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
       minimum-idle: 5

@@ -1,13 +1,15 @@
 package com.example.atm.jpos.participant;
 
-import com.example.atm.jpos.SpringBeanFactory;
-import com.example.atm.service.BankService;
-import lombok.extern.slf4j.Slf4j;
+import java.io.Serializable;
+
 import org.jpos.iso.ISOMsg;
 import org.jpos.transaction.Context;
 import org.jpos.transaction.TransactionParticipant;
 
-import java.io.Serializable;
+import com.example.atm.jpos.SpringBeanFactory;
+import com.example.atm.service.BankService;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * jPOS TransactionParticipant for PIN verification.
@@ -70,7 +72,6 @@ public class PinVerificationParticipant implements TransactionParticipant {
 
     @Override
     public void abort(long id, Serializable context) {
-        Context ctx = (Context) context;
         log.debug("PIN verification participant aborted for transaction: {}", id);
     }
 }
