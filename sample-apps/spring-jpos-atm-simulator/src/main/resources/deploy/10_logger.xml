@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<logger class="org.jpos.q2.qbean.LoggerAdaptor" logger="Q2">
+    <log-listener class="org.jpos.util.SimpleLogListener"/>
+</logger>

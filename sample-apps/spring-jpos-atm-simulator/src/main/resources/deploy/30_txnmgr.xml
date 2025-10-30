@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<txnmgr class="org.jpos.transaction.TransactionManager" logger="Q2">
+    <property name="queue" value="txnmgr-queue"/>
+    <property name="sessions" value="2"/>
+
+    <participant class="com.example.atm.jpos.participant.PinVerificationParticipant" logger="Q2"/>
+    <participant class="com.example.atm.jpos.participant.BalanceInquiryParticipant" logger="Q2"/>
+    <participant class="com.example.atm.jpos.participant.WithdrawalParticipant" logger="Q2"/>
+</txnmgr>

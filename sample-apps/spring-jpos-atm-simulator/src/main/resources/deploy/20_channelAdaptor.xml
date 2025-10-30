@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<channel-adaptor class="org.jpos.q2.iso.ChannelAdaptor" logger="Q2">
+    <channel class="org.jpos.iso.channel.ASCIIChannel" packager="org.jpos.iso.packager.Base24Packager">
+        <property name="host" value="0.0.0.0"/>
+        <property name="port" value="8000"/>
+        <property name="timeout" value="30000"/>
+    </channel>
+    <in>receive-queue</in>
+    <out>send-queue</out>
+    <reconnect-delay>10000</reconnect-delay>
+</channel-adaptor>

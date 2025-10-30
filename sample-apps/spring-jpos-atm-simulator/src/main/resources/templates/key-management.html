@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Key Management - ATM Simulator</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6">
+            <h1 class="text-2xl font-bold text-center mb-6">Key Management</h1>
+
+            <div id="result" class="hidden mb-4 p-4 rounded"></div>
+
+            <form id="keyForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Key Type</label>
+                    <select id="keyType" name="keyType"
+                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="TMK">TMK - Terminal Master Key</option>
+                        <option value="TPK">TPK - Terminal PIN Key</option>
+                        <option value="TSK">TSK - Terminal Session Key</option>
+                    </select>
+                </div>
+
+                <button type="submit"
+                        class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    Initiate Key Change
+                </button>
+            </form>
+
+            <div class="mt-6 text-center">
+                <a href="/atm" class="text-indigo-600 hover:text-indigo-800">Back to ATM</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('keyForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const keyType = document.getElementById('keyType').value;
+            const resultDiv = document.getElementById('result');
+
+            try {
+                const response = await fetch('/keys/change', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ keyType })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    resultDiv.className = 'mb-4 p-4 rounded bg-green-100 text-green-700';
+                    resultDiv.innerHTML = `
+                        <p class="font-bold">Key Changed Successfully!</p>
+                        <p>Key Type: ${data.keyType}</p>
+                        <p>Check Value: ${data.checkValue}</p>
+                    `;
+                } else {
+                    resultDiv.className = 'mb-4 p-4 rounded bg-red-100 text-red-700';
+                    resultDiv.textContent = 'Key change failed';
+                }
+
+                resultDiv.classList.remove('hidden');
+            } catch (error) {
+                resultDiv.className = 'mb-4 p-4 rounded bg-red-100 text-red-700';
+                resultDiv.textContent = 'Error: ' + error.message;
+                resultDiv.classList.remove('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
