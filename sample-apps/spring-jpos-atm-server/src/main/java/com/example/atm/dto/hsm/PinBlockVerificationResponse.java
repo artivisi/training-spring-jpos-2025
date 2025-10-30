@@ -1,6 +1,7 @@
 package com.example.atm.dto.hsm;
 
 import com.example.atm.entity.PinEncryptionAlgorithm;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,5 +19,11 @@ public class PinBlockVerificationResponse {
     private String pinFormat;
     private String lmkKeyId;
     private String tpkKeyId;
+
+    /**
+     * Internal tracking field - not returned by HSM.
+     * Set by client based on request context.
+     */
+    @JsonIgnore
     private PinEncryptionAlgorithm encryptionAlgorithm;
 }
