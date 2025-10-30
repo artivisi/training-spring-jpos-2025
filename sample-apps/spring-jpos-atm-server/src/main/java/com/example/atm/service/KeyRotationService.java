@@ -1,6 +1,5 @@
 package com.example.atm.service;
 
-import com.example.atm.config.HsmProperties;
 import com.example.atm.dto.rotation.KeyRotationConfirmation;
 import com.example.atm.dto.rotation.KeyRotationRequest;
 import com.example.atm.dto.rotation.KeyRotationResponse;
@@ -10,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 
 /**
  * Service for terminal-initiated key rotation.
@@ -28,8 +26,7 @@ import org.springframework.web.client.RestTemplate;
 public class KeyRotationService {
 
     private final CryptoKeyService cryptoKeyService;
-    private final HsmProperties hsmProperties;
-    private final RestTemplate restTemplate;
+    private final HsmClient hsmClient;
 
     /**
      * Initiate key rotation for a terminal.
@@ -104,8 +101,6 @@ public class KeyRotationService {
      */
     private KeyRotationResponse requestRotationFromHsm(String terminalId, String keyType,
                                                        Integer gracePeriodHours, String description) {
-        String url = hsmProperties.getUrl() + "/api/hsm/terminal/" + terminalId + "/request-rotation";
-
         KeyRotationRequest request = KeyRotationRequest.builder()
                 .keyType(keyType)
                 .rotationType("SCHEDULED")
@@ -113,10 +108,10 @@ public class KeyRotationService {
                 .description(description)
                 .build();
 
-        log.debug("Requesting rotation from HSM: url={}, request={}", url, request);
+        log.debug("Requesting rotation from HSM: terminalId={}, request={}", terminalId, request);
 
         try {
-            KeyRotationResponse response = restTemplate.postForObject(url, request, KeyRotationResponse.class);
+            KeyRotationResponse response = hsmClient.requestKeyRotation(terminalId, request);
             if (response == null) {
                 throw new RuntimeException("HSM returned null response for rotation request");
             }
@@ -131,17 +126,15 @@ public class KeyRotationService {
      * Confirm successful key installation to HSM.
      */
     private void confirmRotationToHsm(String terminalId, String rotationId) {
-        String url = hsmProperties.getUrl() + "/api/hsm/terminal/" + terminalId + "/confirm-key-update";
-
         KeyRotationConfirmation confirmation = KeyRotationConfirmation.builder()
                 .rotationId(rotationId)
                 .confirmedBy("ATM_SERVER_v1.0")
                 .build();
 
-        log.debug("Confirming rotation to HSM: url={}, rotationId={}", url, rotationId);
+        log.debug("Confirming rotation to HSM: terminalId={}, rotationId={}", terminalId, rotationId);
 
         try {
-            restTemplate.postForObject(url, confirmation, Void.class);
+            hsmClient.confirmKeyRotation(terminalId, confirmation);
             log.info("Successfully confirmed rotation to HSM: {}", rotationId);
         } catch (Exception e) {
             log.error("Failed to confirm rotation to HSM: {}", e.getMessage(), e);
