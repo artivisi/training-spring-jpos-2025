@@ -2,6 +2,7 @@ package com.example.atm.jpos;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -20,6 +21,7 @@ import org.springframework.test.context.TestPropertySource;
 
 import com.example.atm.dto.hsm.PinFormat;
 import com.example.atm.entity.PinEncryptionAlgorithm;
+import com.example.atm.util.AesPinBlockUtil;
 import com.example.atm.util.PinBlockGenerator;
 
 import lombok.extern.slf4j.Slf4j;
@@ -54,6 +56,9 @@ class JposServerIntegrationTest {
     @Value("${test.tpk.key}")
     private String tpkKey;
 
+    @Value("${test.tsk.key}")
+    private String tskKey;
+
     @Value("${test.bank.uuid}")
     private String bankUuid;
 
@@ -64,6 +69,7 @@ class JposServerIntegrationTest {
     private String institutionId;
 
     private BaseChannel channel;
+    private ISOPackager packager;
     private static final String HOST = "localhost";
     private static final String TEST_PAN = "4111111111111111";
 
@@ -77,7 +83,7 @@ class JposServerIntegrationTest {
         log.info("TPK Key: {}", tpkKey);
 
         // Instantiate packager from configuration
-        ISOPackager packager = (ISOPackager) Class.forName(packagerClass)
+        packager = (ISOPackager) Class.forName(packagerClass)
                 .getDeclaredConstructor()
                 .newInstance();
 
@@ -118,7 +124,7 @@ class JposServerIntegrationTest {
      *   - Valid PVV or encrypted PIN block for verification
      */
     @Test
-    void testBalanceInquiryWithPinIntegration() throws ISOException, IOException {
+    void testBalanceInquiryWithPinIntegration() throws Exception {
         log.info("TEST: Balance Inquiry with PIN (Integration)");
 
         ISOMsg request = createBalanceInquiryRequest("1234567890", "1234");
@@ -139,6 +145,7 @@ class JposServerIntegrationTest {
                 response.getMTI(), response.getString(39));
 
         assertEquals("0210", response.getMTI(), "Response MTI should be 0210");
+        verifyResponseMac(response);
 
         String responseCode = response.getString(39);
         if ("00".equals(responseCode)) {
@@ -169,7 +176,7 @@ class JposServerIntegrationTest {
      * - Account 0987654321 exists with PVV='0187' for PIN 1234
      */
     @Test
-    void testBalanceInquiryWithPvvVerification() throws ISOException, IOException {
+    void testBalanceInquiryWithPvvVerification() throws Exception {
         log.info("TEST: Balance Inquiry with PVV Verification");
 
         ISOMsg request = createBalanceInquiryRequest("0987654321", "1234");
@@ -191,6 +198,7 @@ class JposServerIntegrationTest {
                 response.getMTI(), response.getString(39));
 
         assertEquals("0210", response.getMTI(), "Response MTI should be 0210");
+        verifyResponseMac(response);
 
         String responseCode = response.getString(39);
         if ("00".equals(responseCode)) {
@@ -211,7 +219,7 @@ class JposServerIntegrationTest {
      * PIN is mandatory - should be rejected with response code 55.
      */
     @Test
-    void testBalanceInquiryWithoutPin() throws ISOException, IOException {
+    void testBalanceInquiryWithoutPin() throws Exception {
         log.info("TEST: Balance Inquiry without PIN (should be rejected)");
 
         ISOMsg request = createBalanceInquiryRequest("1234567890", null);
@@ -226,6 +234,7 @@ class JposServerIntegrationTest {
                 response.getMTI(), response.getString(39));
 
         assertEquals("0210", response.getMTI(), "Response MTI should be 0210");
+        verifyResponseMac(response);
         assertEquals("55", response.getString(39), "Response code should be 55 (PIN required)");
 
         log.info("TEST PASSED\n");
@@ -236,7 +245,7 @@ class JposServerIntegrationTest {
      * Should return response code 14 (invalid account).
      */
     @Test
-    void testBalanceInquiryInvalidAccount() throws ISOException, IOException {
+    void testBalanceInquiryInvalidAccount() throws Exception {
         log.info("TEST: Balance Inquiry with Invalid Account");
 
         ISOMsg request = createBalanceInquiryRequest("9999999999", null);
@@ -251,6 +260,7 @@ class JposServerIntegrationTest {
                 response.getMTI(), response.getString(39));
 
         assertEquals("0210", response.getMTI(), "Response MTI should be 0210");
+        verifyResponseMac(response);
         assertEquals("14", response.getString(39), "Response code should be 14 (invalid account)");
 
         log.info("TEST PASSED\n");
@@ -265,7 +275,7 @@ class JposServerIntegrationTest {
      * - Valid PIN 1234
      */
     @Test
-    void testWithdrawalWithPinIntegration() throws ISOException, IOException {
+    void testWithdrawalWithPinIntegration() throws Exception {
         log.info("TEST: Withdrawal with PIN (Integration)");
 
         ISOMsg request = createWithdrawalRequest("1234567890", 50000, "1234"); // 500.00
@@ -280,6 +290,7 @@ class JposServerIntegrationTest {
                 response.getMTI(), response.getString(39));
 
         assertEquals("0210", response.getMTI(), "Response MTI should be 0210");
+        verifyResponseMac(response);
 
         String responseCode = response.getString(39);
         if ("00".equals(responseCode)) {
@@ -297,7 +308,7 @@ class JposServerIntegrationTest {
      * Test withdrawal with insufficient funds.
      */
     @Test
-    void testWithdrawalInsufficientFunds() throws ISOException, IOException {
+    void testWithdrawalInsufficientFunds() throws Exception {
         log.info("TEST: Withdrawal with Insufficient Funds");
 
         ISOMsg request = createWithdrawalRequest("1234567890", 1000000000, "1234"); // 10,000,000.00
@@ -312,6 +323,7 @@ class JposServerIntegrationTest {
                 response.getMTI(), response.getString(39));
 
         assertEquals("0210", response.getMTI(), "Response MTI should be 0210");
+        verifyResponseMac(response);
         assertEquals("51", response.getString(39), "Response code should be 51 (insufficient funds)");
 
         log.info("TEST PASSED\n");
@@ -321,7 +333,42 @@ class JposServerIntegrationTest {
     // Helper Methods
     // ============================================================================
 
-    private ISOMsg createBalanceInquiryRequest(String accountNumber, String clearPin) throws ISOException {
+    /**
+     * Add MAC to ISO message using TSK with key derivation.
+     * Packs the message (without field 64), generates MAC, and adds it to field 64.
+     */
+    private void addMacToMessage(ISOMsg msg) throws Exception {
+        // Set packager on message before packing
+        msg.setPackager(packager);
+
+        // Pack message without field 64 (MAC)
+        byte[] macData = msg.pack();
+
+        // Convert TSK master key to bytes
+        byte[] tskMasterKeyBytes = AesPinBlockUtil.hexToBytes(tskKey);
+
+        // Generate MAC with key derivation (TSK master → operational key)
+        byte[] mac = com.example.atm.util.AesCmacUtil.generateMacWithKeyDerivation(
+                macData, tskMasterKeyBytes, bankUuid);
+
+        // Set MAC in field 64 (binary field, 16 bytes)
+        msg.set(64, mac);
+
+        log.debug("Added MAC to message: {} bytes", mac.length);
+    }
+
+    /**
+     * Verify MAC is present in response message.
+     */
+    private void verifyResponseMac(ISOMsg response) {
+        assertTrue(response.hasField(64), "Response should have MAC in field 64");
+        byte[] responseMac = response.getBytes(64);
+        assertNotNull(responseMac, "Response MAC should not be null");
+        assertEquals(16, responseMac.length, "Response MAC should be 16 bytes");
+        log.info("  ✓ Response MAC verified: {} bytes", responseMac.length);
+    }
+
+    private ISOMsg createBalanceInquiryRequest(String accountNumber, String clearPin) throws Exception {
         ISOMsg msg = new ISOMsg();
         msg.setMTI("0200");
 
@@ -362,16 +409,19 @@ class JposServerIntegrationTest {
                     clearPin, TEST_PAN, tpkKey, bankUuid,
                     PinEncryptionAlgorithm.AES_256, PinFormat.ISO_0);
             // Convert hex string to bytes for binary field
-            msg.set(123, hexToBytes(pinBlock));
+            msg.set(123, AesPinBlockUtil.hexToBytes(pinBlock));
         }
 
         // Field 102: Account Number
         msg.set(102, accountNumber);
 
+        // Add MAC to message
+        addMacToMessage(msg);
+
         return msg;
     }
 
-    private ISOMsg createWithdrawalRequest(String accountNumber, long amountInCents, String clearPin) throws ISOException {
+    private ISOMsg createWithdrawalRequest(String accountNumber, long amountInCents, String clearPin) throws Exception {
         ISOMsg msg = new ISOMsg();
         msg.setMTI("0200");
 
@@ -412,11 +462,14 @@ class JposServerIntegrationTest {
                     clearPin, TEST_PAN, tpkKey, bankUuid,
                     PinEncryptionAlgorithm.AES_256, PinFormat.ISO_0);
             // Convert hex string to bytes for binary field
-            msg.set(123, hexToBytes(pinBlock));
+            msg.set(123, AesPinBlockUtil.hexToBytes(pinBlock));
         }
 
         // Field 102: Account Number
         msg.set(102, accountNumber);
+
+        // Add MAC to message
+        addMacToMessage(msg);
 
         return msg;
     }
@@ -434,16 +487,4 @@ class JposServerIntegrationTest {
         };
     }
 
-    /**
-     * Convert hex string to byte array.
-     */
-    private byte[] hexToBytes(String hex) {
-        int len = hex.length();
-        byte[] data = new byte[len / 2];
-        for (int i = 0; i < len; i += 2) {
-            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
-                    + Character.digit(hex.charAt(i + 1), 16));
-        }
-        return data;
-    }
 }

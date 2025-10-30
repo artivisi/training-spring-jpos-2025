@@ -11,6 +11,7 @@ import org.jpos.transaction.TransactionParticipant;
 import com.example.atm.config.HsmProperties;
 import com.example.atm.jpos.SpringBeanFactory;
 import com.example.atm.util.AesCmacUtil;
+import com.example.atm.util.AesPinBlockUtil;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -23,12 +24,30 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class MacVerificationParticipant implements TransactionParticipant {
 
-    // TODO: Replace with actual key management
-    // In production, load from HSM or secure key store
-    private static final byte[] DUMMY_TMK_AES128 = new byte[16]; // 16-byte AES-128 key
-
     private HsmProperties getHsmProperties() {
         return SpringBeanFactory.getBean(HsmProperties.class);
+    }
+
+    /**
+     * Get TSK master key bytes from configuration.
+     */
+    private byte[] getTskMasterKeyBytes() {
+        HsmProperties.Keys keys = getHsmProperties().getKeys();
+        if (keys == null || keys.getTskMasterKey() == null) {
+            throw new RuntimeException("TSK master key not configured");
+        }
+        return AesPinBlockUtil.hexToBytes(keys.getTskMasterKey());
+    }
+
+    /**
+     * Get bank UUID from configuration.
+     */
+    private String getBankUuid() {
+        HsmProperties.Keys keys = getHsmProperties().getKeys();
+        if (keys == null || keys.getBankUuid() == null) {
+            throw new RuntimeException("Bank UUID not configured");
+        }
+        return keys.getBankUuid();
     }
 
     @Override
@@ -135,22 +154,60 @@ public class MacVerificationParticipant implements TransactionParticipant {
     }
 
     /**
-     * Verify MAC using configured algorithm.
+     * Verify MAC using configured algorithm with TSK key derivation.
      */
     private boolean verifyMac(byte[] data, byte[] receivedMac, HsmProperties.MacAlgorithm algorithm) {
+        byte[] tskMasterKeyBytes = getTskMasterKeyBytes();
+        String bankUuid = getBankUuid();
+
         return switch (algorithm) {
-            case AES_CMAC -> AesCmacUtil.verifyMac(data, receivedMac, DUMMY_TMK_AES128);
-            case HMAC_SHA256_TRUNCATED -> AesCmacUtil.verifyHmacSha256Truncated(data, receivedMac, DUMMY_TMK_AES128);
+            case AES_CMAC -> AesCmacUtil.verifyMacWithKeyDerivation(data, receivedMac, tskMasterKeyBytes, bankUuid);
+            case HMAC_SHA256_TRUNCATED -> {
+                // For HMAC, still use key derivation for consistency
+                String context = "TSK:" + bankUuid + ":MAC";
+                byte[] tskOperationalKey = deriveKeyFromParent(tskMasterKeyBytes, context, 128);
+                yield AesCmacUtil.verifyHmacSha256Truncated(data, receivedMac, tskOperationalKey);
+            }
         };
     }
 
     /**
-     * Generate MAC using configured algorithm.
+     * Generate MAC using configured algorithm with TSK key derivation.
      */
     private byte[] generateMac(byte[] data, HsmProperties.MacAlgorithm algorithm) {
+        byte[] tskMasterKeyBytes = getTskMasterKeyBytes();
+        String bankUuid = getBankUuid();
+
         return switch (algorithm) {
-            case AES_CMAC -> AesCmacUtil.generateMac(data, DUMMY_TMK_AES128);
-            case HMAC_SHA256_TRUNCATED -> AesCmacUtil.generateHmacSha256Truncated(data, DUMMY_TMK_AES128);
+            case AES_CMAC -> AesCmacUtil.generateMacWithKeyDerivation(data, tskMasterKeyBytes, bankUuid);
+            case HMAC_SHA256_TRUNCATED -> {
+                // For HMAC, still use key derivation for consistency
+                String context = "TSK:" + bankUuid + ":MAC";
+                byte[] tskOperationalKey = deriveKeyFromParent(tskMasterKeyBytes, context, 128);
+                yield AesCmacUtil.generateHmacSha256Truncated(data, tskOperationalKey);
+            }
         };
+    }
+
+    /**
+     * Derive operational key from parent key using PBKDF2-SHA256.
+     * Matches HSM simulator key derivation: 100,000 iterations, context as salt.
+     */
+    private byte[] deriveKeyFromParent(byte[] parentKey, String context, int outputBits) {
+        try {
+            // Convert parent key to char array (hex representation)
+            char[] keyChars = AesPinBlockUtil.bytesToHex(parentKey).toCharArray();
+
+            // Use context as salt
+            byte[] salt = context.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+            // PBKDF2 with 100,000 iterations (matches HSM)
+            javax.crypto.spec.PBEKeySpec spec = new javax.crypto.spec.PBEKeySpec(keyChars, salt, 100_000, outputBits);
+            javax.crypto.SecretKeyFactory factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+
+            return factory.generateSecret(spec).getEncoded();
+        } catch (Exception e) {
+            throw new RuntimeException("Key derivation failed", e);
+        }
     }
 }

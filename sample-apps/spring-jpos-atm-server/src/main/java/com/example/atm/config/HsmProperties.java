@@ -14,6 +14,7 @@ public class HsmProperties {
     private Pin pin;
     private Mac mac;
     private Connection connection;
+    private Keys keys;
 
     @Data
     public static class Pin {
@@ -49,5 +50,12 @@ public class HsmProperties {
     public static class Connection {
         private int timeout;
         private int readTimeout;
+    }
+
+    @Data
+    public static class Keys {
+        private String bankUuid;
+        private String tskMasterKey;
+        private String tpkMasterKey;
     }
 }

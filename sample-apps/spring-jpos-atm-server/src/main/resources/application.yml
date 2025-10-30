@@ -63,6 +63,15 @@ hsm:
   connection:
     timeout: 5000
     read-timeout: 10000
+  keys:
+    # Bank UUID for key derivation context (matches HSM seed data ISS001)
+    bank-uuid: 48a9e84c-ff57-4483-bf83-b255f34a6466
+    # TSK master key for MAC operations (TSK-TRM-ISS001-ATM-001 from HSM seed data)
+    # 32 bytes (256 bits) = 64 hex characters
+    tsk-master-key: 3AC638783EF600FE5E25E8A2EE5B0D222EB810DDF64C3681DD11AFEFAF41614B
+    # TPK master key for PIN operations (TPK-TRM-ISS001-ATM-001 from HSM seed data)
+    # 32 bytes (256 bits) = 64 hex characters
+    tpk-master-key: 246A31D729B280DD7FCDA3BB7F187ABFA1BB0811D7EF3D68FDCA63579F3748B0
 
 logging:
   level:

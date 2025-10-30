@@ -7,6 +7,9 @@ import org.bouncycastle.crypto.engines.AESEngine;
 import org.bouncycastle.crypto.params.KeyParameter;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.Security;
 
@@ -29,24 +32,69 @@ public class AesCmacUtil {
     }
 
     /**
-     * Generate AES-CMAC (128-bit output) for the given data.
+     * Generate AES-CMAC with key derivation (recommended for production).
+     * Derives 128-bit operational key from 256-bit master key using PBKDF2.
      *
      * @param data Data to authenticate
-     * @param tmkBytes 16-byte AES-128 Terminal Master Key (or 32-byte AES-256)
+     * @param tskMasterKeyBytes 32-byte TSK master key
+     * @param bankUuid Bank UUID for key derivation context
      * @return 16-byte MAC suitable for field 64
      */
-    public static byte[] generateMac(byte[] data, byte[] tmkBytes) {
+    public static byte[] generateMacWithKeyDerivation(byte[] data, byte[] tskMasterKeyBytes, String bankUuid) {
+        if (tskMasterKeyBytes.length != 32) {
+            throw new IllegalArgumentException("TSK master key must be 32 bytes (AES-256), got: " + tskMasterKeyBytes.length);
+        }
+
+        // Derive operational key: TSK master (32 bytes) → operational (16 bytes)
+        String context = "TSK:" + bankUuid + ":MAC";
+        byte[] tskOperationalKey = deriveKeyFromParent(tskMasterKeyBytes, context, 128);
+
+        return generateMac(data, tskOperationalKey);
+    }
+
+    /**
+     * Verify AES-CMAC with key derivation.
+     *
+     * @param data Data to verify
+     * @param receivedMac MAC received (16 bytes)
+     * @param tskMasterKeyBytes 32-byte TSK master key
+     * @param bankUuid Bank UUID for key derivation context
+     * @return true if MAC is valid
+     */
+    public static boolean verifyMacWithKeyDerivation(byte[] data, byte[] receivedMac, byte[] tskMasterKeyBytes, String bankUuid) {
+        if (receivedMac == null || receivedMac.length != 16) {
+            throw new IllegalArgumentException("MAC must be 16 bytes");
+        }
+
+        try {
+            byte[] calculatedMac = generateMacWithKeyDerivation(data, tskMasterKeyBytes, bankUuid);
+            return MessageDigest.isEqual(calculatedMac, receivedMac);
+        } catch (Exception e) {
+            log.error("Failed to verify AES-CMAC with key derivation", e);
+            return false;
+        }
+    }
+
+    /**
+     * Generate AES-CMAC (128-bit output) for the given data.
+     * Note: This method uses the key directly. For production, use generateMacWithKeyDerivation().
+     *
+     * @param data Data to authenticate
+     * @param keyBytes 16-byte AES-128 key (or 32-byte AES-256)
+     * @return 16-byte MAC suitable for field 64
+     */
+    public static byte[] generateMac(byte[] data, byte[] keyBytes) {
         if (data == null || data.length == 0) {
             throw new IllegalArgumentException("Data cannot be null or empty");
         }
-        if (tmkBytes.length != 16 && tmkBytes.length != 32) {
-            throw new IllegalArgumentException("AES key must be 16 or 32 bytes, got: " + tmkBytes.length);
+        if (keyBytes.length != 16 && keyBytes.length != 32) {
+            throw new IllegalArgumentException("AES key must be 16 or 32 bytes, got: " + keyBytes.length);
         }
 
         try {
             // Create AES-CMAC instance
             CMac cmac = new CMac(new AESEngine());
-            CipherParameters params = new KeyParameter(tmkBytes);
+            CipherParameters params = new KeyParameter(keyBytes);
             cmac.init(params);
 
             // Process data
@@ -62,6 +110,47 @@ public class AesCmacUtil {
             log.error("Failed to generate AES-CMAC", e);
             throw new RuntimeException("AES-CMAC generation failed", e);
         }
+    }
+
+    /**
+     * Derive operational key from parent key using PBKDF2-SHA256.
+     * Matches HSM simulator key derivation: 100,000 iterations, context as salt.
+     *
+     * @param parentKey Parent key bytes (e.g., 32-byte master key)
+     * @param context Context string (e.g., "TSK:UUID:MAC")
+     * @param outputBits Output key size in bits (e.g., 128 for 16 bytes)
+     * @return Derived key bytes
+     */
+    private static byte[] deriveKeyFromParent(byte[] parentKey, String context, int outputBits) {
+        try {
+            // Convert parent key to char array (hex representation)
+            char[] keyChars = bytesToHex(parentKey).toCharArray();
+
+            // Use context as salt
+            byte[] salt = context.getBytes(StandardCharsets.UTF_8);
+
+            // PBKDF2 with 100,000 iterations (matches HSM)
+            PBEKeySpec spec = new PBEKeySpec(keyChars, salt, 100_000, outputBits);
+            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+
+            byte[] derived = factory.generateSecret(spec).getEncoded();
+            log.debug("Derived {}-bit key from {}-byte parent key using context: {}",
+                     outputBits, parentKey.length, context);
+            return derived;
+        } catch (Exception e) {
+            throw new RuntimeException("Key derivation failed", e);
+        }
+    }
+
+    /**
+     * Convert byte array to hex string.
+     */
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder result = new StringBuilder();
+        for (byte b : bytes) {
+            result.append(String.format("%02X", b));
+        }
+        return result.toString();
     }
 
     /**
