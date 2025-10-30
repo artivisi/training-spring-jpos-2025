@@ -39,13 +39,15 @@ public class EncryptedPinBlockVerificationStrategy implements PinVerificationStr
                     .terminalId(hsmProperties.getPin().getTerminalId())
                     .pan(pan)
                     .pinFormat(hsmProperties.getPin().getFormat())
+                    .encryptionAlgorithm(hsmProperties.getPin().getEncryptionAlgorithm())
                     .build();
 
             PinBlockVerificationResponse response = hsmClient.verifyPinBlock(request);
 
             if (response.isValid()) {
-                log.info("PIN verification successful for account: {}. TPK: {}, LMK: {}",
-                        account.getAccountNumber(), response.getTpkKeyId(), response.getLmkKeyId());
+                log.info("PIN verification successful for account: {}. Algorithm: {}, TPK: {}, LMK: {}",
+                        account.getAccountNumber(), response.getEncryptionAlgorithm(),
+                        response.getTpkKeyId(), response.getLmkKeyId());
                 return true;
             } else {
                 log.warn("PIN verification failed for account: {}. Message: {}",

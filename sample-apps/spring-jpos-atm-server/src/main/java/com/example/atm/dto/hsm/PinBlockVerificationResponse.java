@@ -1,5 +1,6 @@
 package com.example.atm.dto.hsm;
 
+import com.example.atm.entity.PinEncryptionAlgorithm;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,4 +18,5 @@ public class PinBlockVerificationResponse {
     private String pinFormat;
     private String lmkKeyId;
     private String tpkKeyId;
+    private PinEncryptionAlgorithm encryptionAlgorithm;
 }

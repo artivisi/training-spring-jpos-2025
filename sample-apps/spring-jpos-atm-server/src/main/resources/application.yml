@@ -49,6 +49,15 @@ hsm:
       endpoint: /api/hsm/pin/verify-with-pvv
     terminal-id: ATM00001
     format: ISO_0
+    # PIN encryption algorithm: TDES (field 52) or AES_128 (field 123)
+    encryption-algorithm: AES_128
+  mac:
+    # MAC algorithm: AES_CMAC or HMAC_SHA256_TRUNCATED
+    algorithm: AES_CMAC
+    # Enable MAC verification for incoming messages
+    verify-enabled: true
+    # Enable MAC generation for outgoing responses
+    generate-enabled: true
   connection:
     timeout: 5000
     read-timeout: 10000

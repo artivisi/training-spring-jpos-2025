@@ -1,5 +1,7 @@
 package com.example.atm.util;
 
+import com.example.atm.dto.hsm.PinFormat;
+import com.example.atm.entity.PinEncryptionAlgorithm;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.crypto.Cipher;
@@ -10,6 +12,7 @@ import java.util.Arrays;
 
 /**
  * Helper class for generating PIN blocks in tests.
+ * Supports both 3DES and AES-128 encryption.
  * This is a simplified implementation for testing purposes.
  * In production, PIN blocks should be generated using proper HSM operations.
  */
@@ -17,23 +20,57 @@ import java.util.Arrays;
 public class PinBlockGenerator {
 
     /**
-     * Generates a PIN block (ISO Format 0) encrypted under TPK.
+     * Generates a PIN block (ISO Format 0) encrypted under TPK using 3DES.
      * Simplified implementation for testing.
      *
      * @param clearPin Clear PIN (4-12 digits)
      * @param pan Primary Account Number (12-19 digits)
      * @param tpkHex TPK key in hex format (16 or 32 hex chars for DES/3DES)
-     * @return Hex-encoded encrypted PIN block
+     * @return Hex-encoded encrypted PIN block (8 bytes for 3DES)
      */
     public static String generatePinBlock(String clearPin, String pan, String tpkHex) {
         try {
             // ISO Format 0: 0 + PIN length + PIN + padding + XOR with PAN
             String pinBlock = buildIsoFormat0PinBlock(clearPin, pan);
 
-            // Encrypt PIN block with TPK
+            // Encrypt PIN block with TPK (3DES)
             byte[] encrypted = encryptWithTpk(hexToBytes(pinBlock), tpkHex);
 
             return bytesToHex(encrypted);
+        } catch (Exception e) {
+            log.error("Error generating PIN block: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to generate PIN block", e);
+        }
+    }
+
+    /**
+     * Generates a PIN block encrypted under TPK using specified algorithm.
+     *
+     * @param clearPin Clear PIN (4-12 digits)
+     * @param pan Primary Account Number
+     * @param tpkHex TPK key in hex format (32 hex chars for 3DES, or 32 hex chars for AES-128)
+     * @param algorithm Encryption algorithm (TDES or AES_128)
+     * @param format PIN block format
+     * @return Hex-encoded encrypted PIN block
+     */
+    public static String generatePinBlock(String clearPin, String pan, String tpkHex,
+                                          PinEncryptionAlgorithm algorithm, PinFormat format) {
+        try {
+            byte[] clearPinBlock;
+
+            if (algorithm == PinEncryptionAlgorithm.TDES) {
+                // 3DES uses 8-byte PIN blocks
+                String pinBlockHex = buildIsoFormat0PinBlock(clearPin, pan);
+                clearPinBlock = hexToBytes(pinBlockHex);
+                byte[] encrypted = encryptWithTpk(clearPinBlock, tpkHex);
+                return bytesToHex(encrypted);
+            } else {
+                // AES-128 uses 16-byte PIN blocks
+                clearPinBlock = AesPinBlockUtil.buildClearPinBlock(clearPin, pan, format);
+                byte[] tpkBytes = hexToBytes(tpkHex);
+                byte[] encrypted = AesPinBlockUtil.encryptPinBlock(clearPinBlock, tpkBytes);
+                return bytesToHex(encrypted);
+            }
         } catch (Exception e) {
             log.error("Error generating PIN block: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to generate PIN block", e);

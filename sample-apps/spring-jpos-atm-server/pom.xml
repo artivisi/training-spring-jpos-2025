@@ -78,6 +78,13 @@
             <version>1.12.5</version>
         </dependency>
 
+        <!-- BouncyCastle for AES-128 PIN encryption -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.78.1</version>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
