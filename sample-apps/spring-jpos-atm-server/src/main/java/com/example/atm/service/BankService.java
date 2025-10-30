@@ -117,26 +117,53 @@ public class BankService {
     }
 
     /**
+     * Validate that an account exists and is active.
+     * This is a lightweight check that should be done before PIN verification.
+     *
+     * @param accountNumber the account number to validate
+     * @throws AccountNotFoundException if account does not exist
+     * @throws AccountNotActiveException if account is not active
+     */
+    @Transactional(readOnly = true)
+    public void validateAccount(String accountNumber) {
+        log.debug("Validating account: {}", accountNumber);
+
+        Account account = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new AccountNotFoundException(
+                        "Account not found: " + accountNumber));
+
+        if (account.getStatus() != Account.AccountStatus.ACTIVE) {
+            throw new AccountNotActiveException(
+                    "Account is not active: " + accountNumber);
+        }
+
+        log.debug("Account validation successful: {}", accountNumber);
+    }
+
+    /**
      * Verify PIN against account's stored credentials.
      * Uses account's configured verification method (ENCRYPTED_PIN_BLOCK or PVV).
+     * Note: Account should be validated first using validateAccount().
      *
      * @param accountNumber Account number to verify PIN for
      * @param pinBlock PIN block from terminal, encrypted under TPK
      * @param pan Primary Account Number
+     * @param terminalId Full terminal ID (from field 42 + field 41)
      */
-    public void verifyPin(String accountNumber, String pinBlock, String pan) {
-        log.info("Verifying PIN for account: {}", accountNumber);
+
+    public void verifyPin(String accountNumber, String pinBlock, String pan, String terminalId) {
+        log.info("Verifying PIN for account: {} from terminal: {}", accountNumber, terminalId);
 
         if (pinBlock == null || pinBlock.isEmpty()) {
-            log.debug("No PIN block provided for account: {}, skipping verification", accountNumber);
-            return;
+            log.error("PIN block is required but not provided for account: {}", accountNumber);
+            throw new RuntimeException("PIN block is required");
         }
 
         Account account = accountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(() -> new AccountNotFoundException(
                         "Account not found: " + accountNumber));
 
-        boolean pinValid = hsmService.verifyPin(pinBlock, pan, account);
+        boolean pinValid = hsmService.verifyPin(pinBlock, pan, account, terminalId);
 
         if (!pinValid) {
             log.warn("Invalid PIN for account: {}", accountNumber);

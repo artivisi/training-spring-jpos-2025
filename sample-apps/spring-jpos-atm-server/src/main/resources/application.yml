@@ -33,6 +33,9 @@ spring:
     virtual:
       enabled: true
 
+server:
+  port: 9090
+
 jpos:
   server:
     port: 22222
@@ -47,10 +50,9 @@ hsm:
       endpoint: /api/hsm/pin/verify-with-translation
     pvv:
       endpoint: /api/hsm/pin/verify-with-pvv
-    terminal-id: ATM00001
     format: ISO_0
-    # PIN encryption algorithm: TDES (field 52) or AES_128 (field 123)
-    encryption-algorithm: AES_128
+    # PIN encryption algorithm: TDES (field 52), AES_128 (field 123), or AES_256 (field 123)
+    encryption-algorithm: AES_256
   mac:
     # MAC algorithm: AES_CMAC or HMAC_SHA256_TRUNCATED
     algorithm: AES_CMAC
@@ -68,3 +70,4 @@ logging:
     org.hibernate.SQL: DEBUG
     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
     org.flywaydb: INFO
+    com.example.atm: DEBUG

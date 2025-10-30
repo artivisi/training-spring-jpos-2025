@@ -24,8 +24,9 @@ public class PvvVerificationStrategy implements PinVerificationStrategy {
     private final HsmProperties hsmProperties;
 
     @Override
-    public boolean verify(String pinBlockFromTerminal, String pan, Account account) {
-        log.info("Verifying PIN using PVV method for account: {}", account.getAccountNumber());
+    public boolean verify(String pinBlockFromTerminal, String pan, Account account, String terminalId) {
+        log.info("Verifying PIN using PVV method for account: {} terminal: {}",
+                account.getAccountNumber(), terminalId);
 
         String storedPvv = account.getPvv();
         if (storedPvv == null || storedPvv.isEmpty()) {
@@ -37,7 +38,7 @@ public class PvvVerificationStrategy implements PinVerificationStrategy {
             PvvVerificationRequest request = PvvVerificationRequest.builder()
                     .pinBlockUnderTPK(pinBlockFromTerminal)
                     .storedPVV(storedPvv)
-                    .terminalId(hsmProperties.getPin().getTerminalId())
+                    .terminalId(terminalId)
                     .pan(pan)
                     .pinFormat(hsmProperties.getPin().getFormat())
                     .build();

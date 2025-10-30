@@ -40,7 +40,7 @@ public class MacVerificationParticipant implements TransactionParticipant {
             if (msg == null) {
                 log.error("No ISO message in context");
                 ctx.put("RESPONSE_CODE", "96");
-                return ABORTED;
+                return PREPARED | NO_JOIN | READONLY;
             }
 
             HsmProperties.Mac macConfig = getHsmProperties().getMac();
@@ -67,7 +67,7 @@ public class MacVerificationParticipant implements TransactionParticipant {
             if (!macValid) {
                 log.error("MAC verification failed for transaction {}", id);
                 ctx.put("RESPONSE_CODE", "96"); // System malfunction
-                return ABORTED;
+                return PREPARED | NO_JOIN | READONLY;
             }
 
             log.info("MAC verification successful for transaction {}", id);
@@ -77,7 +77,7 @@ public class MacVerificationParticipant implements TransactionParticipant {
         } catch (Exception e) {
             log.error("MAC verification error: {}", e.getMessage(), e);
             ctx.put("RESPONSE_CODE", "96");
-            return ABORTED;
+            return PREPARED | NO_JOIN | READONLY;
         }
     }
 

@@ -6,12 +6,19 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
+
+import java.nio.charset.StandardCharsets;
 import java.security.Security;
 
 /**
- * Utility class for AES-128 PIN block encryption and decryption.
- * Supports ISO 9564 PIN block formats with AES-128 encryption.
+ * Utility class for AES PIN block encryption and decryption.
+ * Supports ISO 9564 PIN block formats with AES-128 and AES-256 encryption using CBC mode.
+ * PIN blocks are exactly 16 bytes (one AES block), so NoPadding is used.
+ * Encrypted output format: IV (16 bytes) + Ciphertext (16 bytes) = 32 bytes total = 64 hex chars.
+ * Matches HSM Simulator encryption: AES-CBC with random IV prepended.
  */
 @Slf4j
 public class AesPinBlockUtil {
@@ -28,56 +35,112 @@ public class AesPinBlockUtil {
     }
 
     /**
-     * Encrypt a PIN block using AES-128.
+     * Encrypt a PIN block using AES/CBC/PKCS5Padding.
+     * Output format: IV (16 bytes) || Ciphertext (16 bytes) = 32 bytes total.
      *
      * @param clearPinBlock 16-byte clear PIN block (ISO format)
-     * @param tpkBytes 16-byte AES-128 Terminal PIN Key
-     * @return 16-byte encrypted PIN block
+     * @param tpkBytes AES Terminal PIN Key (16 bytes for AES-128, 32 bytes for AES-256)
+     * @param bankUuid Bank UUID for key derivation context
+     * @return 32-byte encrypted output (IV + ciphertext)
      */
-    public static byte[] encryptPinBlock(byte[] clearPinBlock, byte[] tpkBytes) {
-        if (clearPinBlock.length != 16) {
-            throw new IllegalArgumentException("Clear PIN block must be 16 bytes, got: " + clearPinBlock.length);
-        }
-        if (tpkBytes.length != 16) {
-            throw new IllegalArgumentException("AES-128 TPK must be 16 bytes, got: " + tpkBytes.length);
-        }
+    public static byte[] encryptPinBlock(byte[] clearPinBlock, byte[] tpkMasterKeyBytes, String bankUuid) {
+      // ISO-0 PIN block is 8 bytes (16 hex chars), not 16 bytes!
+      if (clearPinBlock.length != 8) {
+          throw new IllegalArgumentException("Clear PIN block must be 8 bytes (ISO-0), got: " + clearPinBlock.length);
+      }
+      if (tpkMasterKeyBytes.length != 32) {
+          throw new IllegalArgumentException("TPK master key must be 32 bytes (AES-256), got: " + tpkMasterKeyBytes.length);
+      }
 
-        try {
-            SecretKey tpk = new SecretKeySpec(tpkBytes, "AES");
-            Cipher cipher = Cipher.getInstance("AES/ECB/NoPadding");
-            cipher.init(Cipher.ENCRYPT_MODE, tpk);
-            return cipher.doFinal(clearPinBlock);
-        } catch (Exception e) {
-            log.error("Failed to encrypt PIN block with AES-128", e);
-            throw new RuntimeException("AES-128 PIN block encryption failed", e);
-        }
-    }
+      try {
+          // Step 1: Derive operational key from master key
+          String context = "TPK:" + bankUuid + ":PIN";
+          byte[] tpkOperationalKey = deriveKeyFromParent(tpkMasterKeyBytes, context, 128); // 128 bits = 16 bytes
+
+          // Step 2: Generate random IV (16 bytes)
+          byte[] iv = new byte[16];
+          new java.security.SecureRandom().nextBytes(iv);
+
+          // Step 3: Encrypt with PKCS5Padding (to match HSM)
+          SecretKey tpk = new SecretKeySpec(tpkOperationalKey, "AES"); // Use derived key!
+          Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding"); // Changed from NoPadding!
+          cipher.init(Cipher.ENCRYPT_MODE, tpk, new javax.crypto.spec.IvParameterSpec(iv));
+
+          // PKCS5Padding will pad 8 bytes → 16 bytes automatically
+          byte[] ciphertext = cipher.doFinal(clearPinBlock);
+
+          // Step 4: Prepend IV to ciphertext: IV || ciphertext
+          byte[] result = new byte[iv.length + ciphertext.length];
+          System.arraycopy(iv, 0, result, 0, iv.length);
+          System.arraycopy(ciphertext, 0, result, iv.length, ciphertext.length);
+
+          return result; // 16 (IV) + 16 (encrypted) = 32 bytes total
+      } catch (Exception e) {
+          log.error("Failed to encrypt PIN block with TPK", e);
+          throw new RuntimeException("TPK PIN block encryption failed", e);
+      }
+  }
+
+  // Helper method: PBKDF2 key derivation
+  private static byte[] deriveKeyFromParent(byte[] parentKey, String context, int outputBits) {
+      try {
+          // Convert parent key to char array
+          char[] keyChars = bytesToHex(parentKey).toCharArray();
+
+          // Use context as salt
+          byte[] salt = context.getBytes(StandardCharsets.UTF_8);
+
+          // PBKDF2 with 100,000 iterations
+          PBEKeySpec spec = new PBEKeySpec(keyChars, salt, 100_000, outputBits);
+          SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+
+          return factory.generateSecret(spec).getEncoded();
+      } catch (Exception e) {
+          throw new RuntimeException("Key derivation failed", e);
+      }
+  }
 
     /**
-     * Decrypt a PIN block using AES-128.
-     *
-     * @param encryptedPinBlock 16-byte encrypted PIN block
-     * @param tpkBytes 16-byte AES-128 Terminal PIN Key
-     * @return 16-byte clear PIN block (ISO format)
-     */
-    public static byte[] decryptPinBlock(byte[] encryptedPinBlock, byte[] tpkBytes) {
-        if (encryptedPinBlock.length != 16) {
-            throw new IllegalArgumentException("Encrypted PIN block must be 16 bytes, got: " + encryptedPinBlock.length);
-        }
-        if (tpkBytes.length != 16) {
-            throw new IllegalArgumentException("AES-128 TPK must be 16 bytes, got: " + tpkBytes.length);
-        }
+   * Decrypt a PIN block using AES-128-CBC with PKCS5Padding.
+   * Input format: IV (16 bytes) || Ciphertext (16 bytes) = 32 bytes total.
+   *
+   * @param encryptedPinBlock 32-byte encrypted input (IV + ciphertext)
+   * @param tpkMasterKeyBytes TPK master key (32 bytes for AES-256)
+   * @param bankUuid Bank UUID for key derivation context
+   * @return 8-byte clear PIN block (ISO-0 format)
+   */
+  public static byte[] decryptPinBlock(byte[] encryptedPinBlock, byte[] tpkMasterKeyBytes, String bankUuid) {
+      if (encryptedPinBlock.length != 32) {
+          throw new IllegalArgumentException("Encrypted PIN block must be 32 bytes (IV + ciphertext), got: " +
+  encryptedPinBlock.length);
+      }
+      if (tpkMasterKeyBytes.length != 32) {
+          throw new IllegalArgumentException("TPK master key must be 32 bytes (AES-256), got: " + tpkMasterKeyBytes.length);
+      }
 
-        try {
-            SecretKey tpk = new SecretKeySpec(tpkBytes, "AES");
-            Cipher cipher = Cipher.getInstance("AES/ECB/NoPadding");
-            cipher.init(Cipher.DECRYPT_MODE, tpk);
-            return cipher.doFinal(encryptedPinBlock);
-        } catch (Exception e) {
-            log.error("Failed to decrypt PIN block with AES-128", e);
-            throw new RuntimeException("AES-128 PIN block decryption failed", e);
-        }
-    }
+      try {
+          // Step 1: Derive operational key from master key
+          String context = "TPK:" + bankUuid + ":PIN";
+          byte[] tpkOperationalKey = deriveKeyFromParent(tpkMasterKeyBytes, context, 128); // 16 bytes
+
+          // Step 2: Extract IV (first 16 bytes) and ciphertext (last 16 bytes)
+          byte[] iv = new byte[16];
+          byte[] ciphertext = new byte[16];
+          System.arraycopy(encryptedPinBlock, 0, iv, 0, 16);
+          System.arraycopy(encryptedPinBlock, 16, ciphertext, 0, 16);
+
+          // Step 3: Decrypt with PKCS5Padding
+          SecretKey tpk = new SecretKeySpec(tpkOperationalKey, "AES"); // Use derived key!
+          Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding"); // Changed from NoPadding!
+          cipher.init(Cipher.DECRYPT_MODE, tpk, new javax.crypto.spec.IvParameterSpec(iv));
+
+          // PKCS5Padding will remove padding: 16 bytes → 8 bytes
+          return cipher.doFinal(ciphertext); // Returns 8 bytes
+      } catch (Exception e) {
+          log.error("Failed to decrypt PIN block with TPK", e);
+          throw new RuntimeException("TPK PIN block decryption failed", e);
+      }
+  }
 
     /**
      * Build a clear PIN block according to ISO 9564 format.
@@ -99,6 +162,7 @@ public class AesPinBlockUtil {
     /**
      * Build ISO-0 format PIN block (most common).
      * Format: 0L + PIN + F padding, XORed with 0000 + rightmost 12 digits of PAN (excluding check digit)
+     * Returns 8 bytes (64 bits).
      */
     private static byte[] buildIso0PinBlock(String pin, String pan) {
         if (pin.length() < 4 || pin.length() > 12) {
@@ -108,7 +172,7 @@ public class AesPinBlockUtil {
             throw new IllegalArgumentException("PAN must be at least 13 digits");
         }
 
-        byte[] pinBlock = new byte[16];
+        byte[] pinBlock = new byte[8]; // ISO-0 is 8 bytes!
 
         // First part: 0L + PIN + F padding
         pinBlock[0] = (byte) (0x00 | pin.length());
@@ -130,19 +194,19 @@ public class AesPinBlockUtil {
         }
 
         // Second part: 0000 + rightmost 12 digits of PAN (excluding check digit)
-        byte[] panPart = new byte[16];
+        byte[] panPart = new byte[8]; // 8 bytes!
         String panDigits = pan.substring(pan.length() - 13, pan.length() - 1); // Exclude check digit
         for (int i = 0; i < 12; i++) {
             int digit = Character.digit(panDigits.charAt(i), 10);
             if (i % 2 == 0) {
-                panPart[4 + i / 2] = (byte) (digit << 4);
+                panPart[2 + i / 2] = (byte) (digit << 4);
             } else {
-                panPart[4 + i / 2] |= (byte) digit;
+                panPart[2 + i / 2] |= (byte) digit;
             }
         }
 
         // XOR the two parts
-        for (int i = 0; i < 16; i++) {
+        for (int i = 0; i < 8; i++) {
             pinBlock[i] ^= panPart[i];
         }
 
@@ -299,5 +363,29 @@ public class AesPinBlockUtil {
         }
 
         return pin.toString();
+    }
+
+    /**
+     * Convert hex string to byte array.
+     */
+    public static byte[] hexToBytes(String hex) {
+        int len = hex.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
+                    + Character.digit(hex.charAt(i + 1), 16));
+        }
+        return data;
+    }
+
+    /**
+     * Convert byte array to hex string.
+     */
+    public static String bytesToHex(byte[] bytes) {
+        StringBuilder result = new StringBuilder();
+        for (byte b : bytes) {
+            result.append(String.format("%02X", b));
+        }
+        return result.toString();
     }
 }

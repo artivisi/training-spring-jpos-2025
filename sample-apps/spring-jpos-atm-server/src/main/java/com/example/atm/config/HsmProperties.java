@@ -19,9 +19,8 @@ public class HsmProperties {
     public static class Pin {
         private EncryptedPinBlock encryptedPinBlock;
         private Pvv pvv;
-        private String terminalId;
         private PinFormat format;
-        private PinEncryptionAlgorithm encryptionAlgorithm = PinEncryptionAlgorithm.TDES;
+        private PinEncryptionAlgorithm encryptionAlgorithm = PinEncryptionAlgorithm.AES_256;
 
         @Data
         public static class EncryptedPinBlock {

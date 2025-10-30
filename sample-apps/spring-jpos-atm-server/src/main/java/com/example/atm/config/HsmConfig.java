@@ -7,6 +7,7 @@ import org.springframework.web.client.support.RestClientAdapter;
 import org.springframework.web.service.invoker.HttpServiceProxyFactory;
 
 import com.example.atm.service.HsmClient;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +20,12 @@ public class HsmConfig {
     private final HsmProperties hsmProperties;
 
     @Bean
-    public RestClient hsmRestClient() {
+    public ObjectMapper objectMapper() {
+        return new ObjectMapper();
+    }
+
+    @Bean
+    public RestClient hsmRestClient(ObjectMapper objectMapper) {
         String baseUrl = hsmProperties.getUrl();
 
         log.info("Configuring HSM RestClient with base URL: {}", baseUrl);
@@ -29,8 +35,17 @@ public class HsmConfig {
         return RestClient.builder()
                 .baseUrl(baseUrl)
                 .requestInterceptor((request, body, execution) -> {
-                    log.debug("HSM Request: {} {}", request.getMethod(), request.getURI());
-                    return execution.execute(request, body);
+                    // Log request
+                    log.info("→ HSM Request: {} {}", request.getMethod(), request.getURI());
+                    if (body != null && body.length > 0) {
+                        log.info("  Body: {}", new String(body));
+                    }
+
+                    // Execute and log response
+                    var response = execution.execute(request, body);
+                    log.info("← HSM Response: {}", response.getStatusCode());
+
+                    return response;
                 })
                 .build();
     }

@@ -4,25 +4,23 @@
 
 This project includes **real integration tests** that communicate with the actual HSM simulator. No mocking is used - these tests verify end-to-end functionality.
 
-## Test Types
+## Test Configuration
 
-### 1. Unit Tests (Mocked)
-- **File:** `JposServerTest.java`
-- **Uses:** `@MockitoBean` for HSM client
-- **Purpose:** Fast tests without external dependencies
-- **Run:** `mvn test` (default)
-
-### 2. Integration Tests (Real HSM)
-- **File:** `JposServerIntegrationTest.java`
-- **Uses:** Real HSM simulator on http://localhost:8080
+- **Test File:** `JposServerIntegrationTest.java`
+- **HSM:** Real HSM simulator on http://localhost:8080
 - **Purpose:** End-to-end validation with actual HSM
-- **Run:** Requires environment variable (see below)
+- **Database:** PostgreSQL (same as production)
+- **Run:** `mvn test` (no environment variables needed)
 
 ## Prerequisites for Integration Tests
 
-### 1. Start PostgreSQL (or uses H2 in-memory)
+### 1. Start PostgreSQL
 
-The integration tests use H2 in-memory database by default, so no PostgreSQL needed for tests.
+```bash
+docker-compose up -d
+```
+
+The integration tests use the same PostgreSQL database as the main application.
 
 ### 2. Start HSM Simulator
 
@@ -51,91 +49,55 @@ curl http://localhost:8080/actuator/health
 # Should return: {"status":"UP"}
 ```
 
-### 3. Configure Test Keys in HSM
+### 3. HSM Test Configuration
 
-The integration tests require specific keys to be configured in the HSM simulator:
+The integration tests use HSM simulator's **pre-seeded sample data** - no manual setup required!
 
-#### TPK (Terminal PIN Key)
-```bash
-curl -X POST http://localhost:8080/api/hsm/keys \
-  -H "Content-Type: application/json" \
-  -d '{
-    "keyType": "TPK",
-    "keyId": "TPK-TEST-001",
-    "terminalId": "ATM00001",
-    "keyValue": "0123456789ABCDEFFEDCBA9876543210"
-  }'
-```
+**Pre-configured in HSM:**
+- Terminal: `TRM-ISS001-ATM-001`
+- TPK Key: `TPK-TRM-ISS001-ATM-001` (AES-256: `246A31D7...3748B0`)
+- Test PAN: `4111111111111111`
+- Test PIN: `1234`
 
-#### LMK (Local Master Key)
-```bash
-curl -X POST http://localhost:8080/api/hsm/keys \
-  -H "Content-Type: application/json" \
-  -d '{
-    "keyType": "LMK",
-    "keyId": "LMK-BANK-001"
-  }'
-```
+**How it works:**
+1. Tests send field 41 = `ATM-001` and field 42 = `TRM-ISS001`
+2. Application combines them → `TRM-ISS001-ATM-001` for HSM calls
+3. HSM recognizes the pre-configured terminal
+4. PIN verification uses AES-256 TPK from HSM sample data
 
-### 4. Configure Test Account PIN in Database
+**ISO-8583 Field Mapping:**
+- Field 41 (16 bytes): Terminal ID = `ATM-001`
+- Field 42 (15 bytes): Card Acceptor ID (institution) = `TRM-ISS001`
+- Combined for HSM: `TRM-ISS001-ATM-001`
 
-The integration tests expect account `1234567890` to have:
-- **Clear PIN:** `1234`
-- **Stored encrypted PIN block** or **PVV** in the database
+**No HSM setup required** - just start the HSM simulator and run tests!
 
-**Generate and store encrypted PIN block:**
-```bash
-# Step 1: Encrypt PIN with TPK
-curl -X POST http://localhost:8080/api/hsm/pin/encrypt \
-  -H "Content-Type: application/json" \
-  -d '{
-    "keyId": "TPK-TEST-001",
-    "accountNumber": "4111111111111111",
-    "clearPin": "1234",
-    "pinFormat": "ISO-0"
-  }'
+### 4. Configure Test Account in Application Database
 
-# Response will include:
-# - encryptedPinBlock: "ABCD1234567890AB"
-# - pinVerificationValue: "1234"
+The tests use account `1234567890` with PIN `1234`. The H2 in-memory database is automatically seeded via Flyway migrations.
 
-# Step 2: Store in database
-# Update account 1234567890:
-# - encrypted_pin_block = "ABCD1234567890AB"
-# - pvv = "1234"
-```
+**Required data (already in migrations):**
+- Account: `1234567890`
+- Balance: `5000000.00`
+- PIN data: encrypted PIN block or PVV for PIN `1234`
 
 ## Running Integration Tests
 
-### Run All Tests (Unit + Integration)
+### Run All Tests
 
 ```bash
-# Set environment variable to enable integration tests
-export INTEGRATION_TEST=true
-
-# Run all tests
 mvn test
+```
 
-# Or specify the integration test class
+### Run Specific Test Class
+
+```bash
 mvn test -Dtest=JposServerIntegrationTest
 ```
 
-### Run Only Unit Tests (Fast)
+### Run Specific Test Method
 
 ```bash
-# Default - no environment variable needed
-mvn test
-
-# Integration tests are skipped automatically
-# (annotated with @EnabledIfEnvironmentVariable)
-```
-
-### Run Specific Integration Test
-
-```bash
-export INTEGRATION_TEST=true
-
-# Run specific test method
 mvn test -Dtest=JposServerIntegrationTest#testBalanceInquiryWithPinIntegration
 ```
 
@@ -275,31 +237,30 @@ mvn test -Dtest=JposServerIntegrationTest
 
 ```properties
 # HSM Configuration for Testing
-hsm.url=http://localhost:8080
-hsm.pin.encrypted-pin-block.endpoint=/api/hsm/pin/verify-with-translation
-hsm.pin.pvv.endpoint=/api/hsm/pin/verify-with-pvv
-hsm.pin.terminal-id=ATM00001
-hsm.pin.format=ISO_0
-hsm.pin.encryption-algorithm=TDES
-hsm.mac.algorithm=AES_CMAC
+hsm.pin.encryption-algorithm=AES_256
 hsm.mac.verify-enabled=false
 hsm.mac.generate-enabled=false
 
-# Test TPK (must match HSM configuration)
-test.tpk.key=0123456789ABCDEFFEDCBA9876543210
+# Test Terminal Configuration (matches HSM sample data)
+test.terminal.id=ATM-001
+test.institution.id=TRM-ISS001
+
+# Test TPK (from HSM sample data - TPK-TRM-ISS001-ATM-001)
+# 32 bytes (256 bits) = 64 hex characters
+test.tpk.key=246A31D729B280DD7FCDA3BB7F187ABFA1BB0811D7EF3D68FDCA63579F3748B0
 ```
 
-### Key Configuration Match
+### Configuration Details
 
-**CRITICAL:** The test TPK must match the TPK configured in HSM simulator.
+**Terminal Identification:**
+- Field 41 (`test.terminal.id`): `ATM-001`
+- Field 42 (`test.institution.id`): `TRM-ISS001`
+- Combined for HSM: `TRM-ISS001-ATM-001`
 
-**Test Configuration:**
-- `test.tpk.key=0123456789ABCDEFFEDCBA9876543210`
-
-**HSM Configuration:**
-- TPK Key ID: `TPK-TEST-001`
-- Terminal ID: `ATM00001`
-- Key Value: `0123456789ABCDEFFEDCBA9876543210`
+**TPK Key:**
+- From HSM sample data: `TPK-TRM-ISS001-ATM-001`
+- Algorithm: AES-256 (32 bytes = 64 hex characters)
+- PIN blocks in field 123 (16 bytes, regardless of key size)
 
 ## CI/CD Integration
 
@@ -338,13 +299,7 @@ jobs:
         run: |
           timeout 60 bash -c 'until curl -f http://localhost:8080/actuator/health; do sleep 2; done'
 
-      - name: Configure HSM Keys
-        run: |
-          ./scripts/setup-hsm-test-keys.sh
-
       - name: Run Integration Tests
-        env:
-          INTEGRATION_TEST: true
         run: mvn test
 ```
 
@@ -382,20 +337,20 @@ curl -X POST http://localhost:8080/api/hsm/pin/generate-pinblock \
 ### Quick Start
 
 ```bash
-# 1. Start HSM simulator
+# 1. Start PostgreSQL
+docker-compose up -d
+
+# 2. Start HSM simulator (has pre-seeded sample data)
 cd hsm-simulator && ./mvnw spring-boot:run &
 
-# 2. Configure test keys
-curl -X POST http://localhost:8080/api/hsm/keys -H "Content-Type: application/json" \
-  -d '{"keyType":"TPK","keyId":"TPK-TEST-001","terminalId":"ATM00001","keyValue":"0123456789ABCDEFFEDCBA9876543210"}'
-
 # 3. Run integration tests
-export INTEGRATION_TEST=true
-mvn test -Dtest=JposServerIntegrationTest
+mvn test
 
 # 4. Check results
 # Look for "TEST PASSED" in logs
 ```
+
+**That's it!** No HSM setup or environment variables needed - tests use HSM's pre-configured sample data.
 
 ### Test Results Interpretation
 
@@ -411,11 +366,24 @@ mvn test -Dtest=JposServerIntegrationTest
 
 ## Next Steps
 
-1. Set up automated test data generation
-2. Add tests for AES-128 PIN blocks (field 123)
-3. Add tests for PVV verification method
-4. Add tests for MAC verification
-5. Add performance tests with concurrent requests
+1. ✅ AES-256 PIN blocks (field 123) - using HSM sample data
+2. ⚠️ Add tests for PVV verification method
+3. ⚠️ Add tests for MAC verification
+4. ⚠️ Add performance tests with concurrent requests
+
+## Technical Notes
+
+**Terminal ID Handling:**
+- Field 41 (16 bytes): Terminal ID (e.g., `ATM-001`)
+- Field 42 (15 bytes): Card Acceptor ID / Institution (e.g., `TRM-ISS001`)
+- Application combines: `field42 + "-" + field41` → `TRM-ISS001-ATM-001`
+- This matches HSM's 19-character terminal IDs while staying within ISO-8583 field limits
+
+**Encryption:**
+- Tests use AES-256 TPK from HSM sample data
+- PIN blocks in field 123 (16 bytes, private use field, LLLCHAR format)
+- AES-256 produces same 16-byte block as AES-128
+- Field 52 (8 bytes) used for legacy 3DES support
 
 ## References
 

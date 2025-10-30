@@ -42,9 +42,10 @@ public class HsmService {
      * @param pinBlockFromTerminal PIN block from terminal, encrypted under TPK
      * @param pan Primary Account Number
      * @param account Account entity containing verification type and stored credentials
+     * @param terminalId Full terminal ID (from field 42 + field 41)
      * @return true if PIN is valid, false otherwise
      */
-    public boolean verifyPin(String pinBlockFromTerminal, String pan, Account account) {
+    public boolean verifyPin(String pinBlockFromTerminal, String pan, Account account, String terminalId) {
         PinVerificationType type = account.getPinVerificationType();
         PinVerificationStrategy strategy = strategyMap.get(type);
 
@@ -53,9 +54,9 @@ public class HsmService {
             throw new RuntimeException("Unsupported PIN verification type: " + type);
         }
 
-        log.info("Using {} verification strategy for account: {}",
-                type, account.getAccountNumber());
+        log.info("Using {} verification strategy for account: {} terminal: {}",
+                type, account.getAccountNumber(), terminalId);
 
-        return strategy.verify(pinBlockFromTerminal, pan, account);
+        return strategy.verify(pinBlockFromTerminal, pan, account, terminalId);
     }
 }

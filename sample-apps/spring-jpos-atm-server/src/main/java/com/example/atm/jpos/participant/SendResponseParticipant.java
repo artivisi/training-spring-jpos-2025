@@ -1,6 +1,7 @@
 package com.example.atm.jpos.participant;
 
 import lombok.extern.slf4j.Slf4j;
+import org.jpos.iso.ISOException;
 import org.jpos.iso.ISOMsg;
 import org.jpos.iso.ISOSource;
 import org.jpos.transaction.Context;
@@ -47,6 +48,45 @@ public class SendResponseParticipant implements TransactionParticipant {
 
     @Override
     public void abort(long id, Serializable context) {
-        log.warn("Transaction {} aborted", id);
+        Context ctx = (Context) context;
+        log.warn("Transaction {} aborted, attempting to send error response", id);
+
+        try {
+            ISOSource source = (ISOSource) ctx.get("SOURCE");
+            ISOMsg response = (ISOMsg) ctx.get("RESPONSE");
+
+            // If response not built yet (participant aborted before ResponseBuilderParticipant),
+            // build a basic error response
+            if (response == null) {
+                ISOMsg request = (ISOMsg) ctx.get("REQUEST");
+                if (request != null) {
+                    response = (ISOMsg) request.clone();
+                    response.setDirection(ISOMsg.OUTGOING);
+                    String mti = request.getMTI();
+                    String responseMTI = mti.substring(0, 2) + "10";
+                    response.setMTI(responseMTI);
+
+                    String responseCode = (String) ctx.get("RESPONSE_CODE");
+                    if (responseCode == null) {
+                        responseCode = "96"; // System error
+                    }
+                    response.set(39, responseCode);
+                    log.info("Built error response in abort: MTI={} RC={}", responseMTI, responseCode);
+                }
+            }
+
+            if (source != null && response != null) {
+                log.info("Sending error response: MTI={} RC={}",
+                         response.getMTI(), response.getString(39));
+                source.send(response);
+                log.info("Error response sent successfully");
+            } else {
+                log.error("Cannot send error response - source: {}, response: {}",
+                         source != null, response != null);
+            }
+
+        } catch (Exception e) {
+            log.error("Error sending abort response: ", e);
+        }
     }
 }

@@ -2,21 +2,22 @@ package com.example.atm.entity;
 
 /**
  * PIN encryption algorithm types supported by the system.
+ * Only AES-128 and AES-256 are supported.
  */
 public enum PinEncryptionAlgorithm {
     /**
-     * Triple DES (3DES) encryption - legacy standard.
-     * Produces 8-byte encrypted PIN blocks.
-     * Uses field 52 in ISO-8583 messages.
-     */
-    TDES("3DES", 8, 52),
-
-    /**
-     * AES-128 encryption - modern standard.
-     * Produces 16-byte encrypted PIN blocks.
+     * AES-128 encryption.
+     * Produces 32-byte encrypted PIN blocks (16-byte IV + 16-byte ciphertext).
      * Uses field 123 in ISO-8583 messages (private use field).
      */
-    AES_128("AES-128", 16, 123);
+    AES_128("AES-128", 32, 123),
+
+    /**
+     * AES-256 encryption - enhanced security (recommended).
+     * Produces 32-byte encrypted PIN blocks (16-byte IV + 16-byte ciphertext).
+     * Uses field 123 in ISO-8583 messages (private use field).
+     */
+    AES_256("AES-256", 32, 123);
 
     private final String displayName;
     private final int blockSize;
@@ -33,7 +34,7 @@ public enum PinEncryptionAlgorithm {
     }
 
     /**
-     * Get the encrypted PIN block size in bytes.
+     * Get the encrypted PIN block size in bytes (includes IV + ciphertext).
      */
     public int getBlockSize() {
         return blockSize;
@@ -50,20 +51,14 @@ public enum PinEncryptionAlgorithm {
      * Get the JCE cipher transformation string.
      */
     public String getCipherTransformation() {
-        return switch (this) {
-            case TDES -> "DESede/ECB/NoPadding";
-            case AES_128 -> "AES/ECB/NoPadding";
-        };
+        return "AES/CBC/PKCS5Padding";
     }
 
     /**
      * Get the key algorithm name for JCE.
      */
     public String getKeyAlgorithm() {
-        return switch (this) {
-            case TDES -> "DESede";
-            case AES_128 -> "AES";
-        };
+        return "AES";
     }
 
     /**
@@ -71,8 +66,8 @@ public enum PinEncryptionAlgorithm {
      */
     public int getKeyLength() {
         return switch (this) {
-            case TDES -> 24;  // 192 bits for 3DES (3 keys)
             case AES_128 -> 16;  // 128 bits
+            case AES_256 -> 32;  // 256 bits
         };
     }
 }

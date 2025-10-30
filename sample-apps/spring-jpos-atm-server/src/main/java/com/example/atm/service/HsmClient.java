@@ -4,6 +4,7 @@ import com.example.atm.dto.hsm.PinBlockVerificationRequest;
 import com.example.atm.dto.hsm.PinBlockVerificationResponse;
 import com.example.atm.dto.hsm.PvvVerificationRequest;
 import com.example.atm.dto.hsm.PvvVerificationResponse;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.service.annotation.HttpExchange;
 import org.springframework.web.service.annotation.PostExchange;
 
@@ -20,8 +21,8 @@ public interface HsmClient {
      *
      * Endpoint: /api/hsm/pin/verify-with-translation
      */
-    @PostExchange("${hsm.pin.encrypted-pin-block.endpoint}")
-    PinBlockVerificationResponse verifyPinBlock(PinBlockVerificationRequest request);
+    @PostExchange("/api/hsm/pin/verify-with-translation")
+    PinBlockVerificationResponse verifyPinBlock(@RequestBody PinBlockVerificationRequest request);
 
     /**
      * Verify PIN using PVV (PIN Verification Value) method.
@@ -29,6 +30,6 @@ public interface HsmClient {
      *
      * Endpoint: /api/hsm/pin/verify-with-pvv
      */
-    @PostExchange("${hsm.pin.pvv.endpoint}")
-    PvvVerificationResponse verifyWithPvv(PvvVerificationRequest request);
+    @PostExchange("/api/hsm/pin/verify-with-pvv")
+    PvvVerificationResponse verifyWithPvv(@RequestBody PvvVerificationRequest request);
 }

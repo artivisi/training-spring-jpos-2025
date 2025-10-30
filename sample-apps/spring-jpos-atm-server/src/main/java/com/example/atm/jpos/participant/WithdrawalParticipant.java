@@ -38,6 +38,13 @@ public class WithdrawalParticipant implements TransactionParticipant {
                 return PREPARED | NO_JOIN | READONLY;
             }
 
+            // Skip processing if an error response code is already set by previous participants
+            String existingResponseCode = (String) ctx.get("RESPONSE_CODE");
+            if (existingResponseCode != null && !"00".equals(existingResponseCode)) {
+                log.debug("Skipping withdrawal - error response code already set: {}", existingResponseCode);
+                return PREPARED | NO_JOIN | READONLY;
+            }
+
             String processingCode = null;
             try {
                 processingCode = msg.getString(3);

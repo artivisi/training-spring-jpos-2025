@@ -7,7 +7,7 @@ CREATE TABLE accounts (
     currency VARCHAR(3) NOT NULL DEFAULT 'IDR',
     account_type VARCHAR(20) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
-    encrypted_pin_block VARCHAR(32),
+    encrypted_pin_block VARCHAR(64),
     pvv VARCHAR(4),
     pin_verification_type VARCHAR(20) DEFAULT 'ENCRYPTED_PIN_BLOCK' NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -42,7 +42,7 @@ CREATE INDEX idx_transactions_type ON transactions(transaction_type);
 COMMENT ON TABLE accounts IS 'Bank accounts table';
 COMMENT ON TABLE transactions IS 'Transaction history for accounts';
 COMMENT ON COLUMN accounts.version IS 'Optimistic locking version';
-COMMENT ON COLUMN accounts.encrypted_pin_block IS 'PIN block encrypted under HSM LMK, hex-encoded. Used for PIN verification with translation method.';
+COMMENT ON COLUMN accounts.encrypted_pin_block IS 'PIN block encrypted under HSM LMK using AES-CBC-PKCS5, hex-encoded (64 chars = 32 bytes: IV + ciphertext). Used for PIN verification with translation method.';
 COMMENT ON COLUMN accounts.pvv IS 'PIN Verification Value - 4 digit value generated from PIN using one-way hash (ISO 9564)';
 COMMENT ON COLUMN accounts.pin_verification_type IS 'Type of PIN verification method: ENCRYPTED_PIN_BLOCK (translation) or PVV';
 COMMENT ON COLUMN transactions.transaction_type IS 'BALANCE_INQUIRY, WITHDRAWAL, DEPOSIT, etc';

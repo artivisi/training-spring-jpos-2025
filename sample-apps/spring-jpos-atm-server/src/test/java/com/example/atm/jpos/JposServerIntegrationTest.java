@@ -1,6 +1,7 @@
 package com.example.atm.jpos;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -13,11 +14,12 @@ import org.jpos.iso.ISOPackager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.TestPropertySource;
 
+import com.example.atm.dto.hsm.PinFormat;
+import com.example.atm.entity.PinEncryptionAlgorithm;
 import com.example.atm.util.PinBlockGenerator;
 
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +53,15 @@ class JposServerIntegrationTest {
 
     @Value("${test.tpk.key}")
     private String tpkKey;
+
+    @Value("${test.bank.uuid}")
+    private String bankUuid;
+
+    @Value("${test.terminal.id}")
+    private String terminalId;
+
+    @Value("${test.institution.id}")
+    private String institutionId;
 
     private BaseChannel channel;
     private static final String HOST = "localhost";
@@ -107,7 +118,6 @@ class JposServerIntegrationTest {
      *   - Valid PVV or encrypted PIN block for verification
      */
     @Test
-    @EnabledIfEnvironmentVariable(named = "INTEGRATION_TEST", matches = "true")
     void testBalanceInquiryWithPinIntegration() throws ISOException, IOException {
         log.info("TEST: Balance Inquiry with PIN (Integration)");
 
@@ -115,7 +125,10 @@ class JposServerIntegrationTest {
 
         log.info("→ Sending balance inquiry request: MTI={}", request.getMTI());
         log.info("  Account: {}", request.getString(102));
-        log.info("  PIN Block: {}", request.getString(52));
+        log.info("  Terminal ID: {}", request.getString(41));
+        if (request.hasField(123)) {
+            log.info("  AES-256 PIN Block (field 123): {}", request.getString(123));
+        }
 
         channel.send(request);
 
@@ -142,12 +155,64 @@ class JposServerIntegrationTest {
     }
 
     /**
+     * Test balance inquiry with PIN using PVV verification method.
+     *
+     * This test uses account 0987654321 which is configured to use PVV verification.
+     * The HSM will verify the PIN by:
+     * 1. Decrypting the PIN block from terminal
+     * 2. Extracting the clear PIN
+     * 3. Generating PVV from the PIN
+     * 4. Comparing with stored PVV (0187)
+     *
+     * Prerequisites:
+     * - HSM simulator running on localhost:8080
+     * - Account 0987654321 exists with PVV='0187' for PIN 1234
+     */
+    @Test
+    void testBalanceInquiryWithPvvVerification() throws ISOException, IOException {
+        log.info("TEST: Balance Inquiry with PVV Verification");
+
+        ISOMsg request = createBalanceInquiryRequest("0987654321", "1234");
+
+        log.info("→ Sending balance inquiry request: MTI={}", request.getMTI());
+        log.info("  Account: {}", request.getString(102));
+        log.info("  Terminal ID: {}", request.getString(41));
+        log.info("  Verification Method: PVV");
+        if (request.hasField(123)) {
+            log.info("  AES-256 PIN Block (field 123) provided");
+        }
+
+        channel.send(request);
+
+        ISOMsg response = channel.receive();
+        assertNotNull(response, "Response should not be null");
+
+        log.info("← Received response: MTI={} RC={}",
+                response.getMTI(), response.getString(39));
+
+        assertEquals("0210", response.getMTI(), "Response MTI should be 0210");
+
+        String responseCode = response.getString(39);
+        if ("00".equals(responseCode)) {
+            assertNotNull(response.getString(54), "Balance field (54) should be present");
+            log.info("  ✓ PIN verified successfully using PVV method");
+            log.info("  ✓ Balance: {}", response.getString(54));
+        } else {
+            log.warn("  ✗ Response code: {} - {}", responseCode, getResponseCodeDescription(responseCode));
+            // Fail if not 00 (approved)
+            assertEquals("00", responseCode, "Expected approved response");
+        }
+
+        log.info("TEST PASSED\n");
+    }
+
+    /**
      * Test balance inquiry without PIN.
-     * PIN verification should be skipped.
+     * PIN is mandatory - should be rejected with response code 55.
      */
     @Test
     void testBalanceInquiryWithoutPin() throws ISOException, IOException {
-        log.info("TEST: Balance Inquiry without PIN");
+        log.info("TEST: Balance Inquiry without PIN (should be rejected)");
 
         ISOMsg request = createBalanceInquiryRequest("1234567890", null);
 
@@ -161,7 +226,7 @@ class JposServerIntegrationTest {
                 response.getMTI(), response.getString(39));
 
         assertEquals("0210", response.getMTI(), "Response MTI should be 0210");
-        assertEquals("00", response.getString(39), "Response code should be 00 (approved)");
+        assertEquals("55", response.getString(39), "Response code should be 55 (PIN required)");
 
         log.info("TEST PASSED\n");
     }
@@ -200,7 +265,6 @@ class JposServerIntegrationTest {
      * - Valid PIN 1234
      */
     @Test
-    @EnabledIfEnvironmentVariable(named = "INTEGRATION_TEST", matches = "true")
     void testWithdrawalWithPinIntegration() throws ISOException, IOException {
         log.info("TEST: Withdrawal with PIN (Integration)");
 
@@ -286,12 +350,19 @@ class JposServerIntegrationTest {
         msg.set(13, dateFormat.format(new Date()));
 
         // Field 41: Terminal ID
-        msg.set(41, "ATM00001");
+        msg.set(41, terminalId);
 
-        // Field 52: PIN Block (if provided)
+        // Field 42: Card Acceptor ID (institution code)
+        msg.set(42, institutionId);
+
+        // Field 123: AES-256 PIN Block (if provided)
+        // NOTE: Field 123 is binary, so we must set as bytes, not as hex string
         if (clearPin != null && !clearPin.isEmpty()) {
-            String pinBlock = PinBlockGenerator.generatePinBlock(clearPin, TEST_PAN, tpkKey);
-            msg.set(52, pinBlock);
+            String pinBlock = PinBlockGenerator.generatePinBlock(
+                    clearPin, TEST_PAN, tpkKey, bankUuid,
+                    PinEncryptionAlgorithm.AES_256, PinFormat.ISO_0);
+            // Convert hex string to bytes for binary field
+            msg.set(123, hexToBytes(pinBlock));
         }
 
         // Field 102: Account Number
@@ -329,12 +400,19 @@ class JposServerIntegrationTest {
         msg.set(13, dateFormat.format(new Date()));
 
         // Field 41: Terminal ID
-        msg.set(41, "ATM00001");
+        msg.set(41, terminalId);
 
-        // Field 52: PIN Block (if provided)
+        // Field 42: Card Acceptor ID (institution code)
+        msg.set(42, institutionId);
+
+        // Field 123: AES-256 PIN Block (if provided)
+        // NOTE: Field 123 is binary, so we must set as bytes, not as hex string
         if (clearPin != null && !clearPin.isEmpty()) {
-            String pinBlock = PinBlockGenerator.generatePinBlock(clearPin, TEST_PAN, tpkKey);
-            msg.set(52, pinBlock);
+            String pinBlock = PinBlockGenerator.generatePinBlock(
+                    clearPin, TEST_PAN, tpkKey, bankUuid,
+                    PinEncryptionAlgorithm.AES_256, PinFormat.ISO_0);
+            // Convert hex string to bytes for binary field
+            msg.set(123, hexToBytes(pinBlock));
         }
 
         // Field 102: Account Number
@@ -354,5 +432,18 @@ class JposServerIntegrationTest {
             case "96" -> "System error";
             default -> "Unknown";
         };
+    }
+
+    /**
+     * Convert hex string to byte array.
+     */
+    private byte[] hexToBytes(String hex) {
+        int len = hex.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
+                    + Character.digit(hex.charAt(i + 1), 16));
+        }
+        return data;
     }
 }

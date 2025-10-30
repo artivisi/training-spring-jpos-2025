@@ -23,8 +23,9 @@ public class EncryptedPinBlockVerificationStrategy implements PinVerificationStr
     private final HsmProperties hsmProperties;
 
     @Override
-    public boolean verify(String pinBlockFromTerminal, String pan, Account account) {
-        log.info("Verifying PIN using encrypted PIN block translation for account: {}", account.getAccountNumber());
+    public boolean verify(String pinBlockFromTerminal, String pan, Account account, String terminalId) {
+        log.info("Verifying PIN using encrypted PIN block translation for account: {} terminal: {}",
+                account.getAccountNumber(), terminalId);
 
         String storedPinBlock = account.getEncryptedPinBlock();
         if (storedPinBlock == null || storedPinBlock.isEmpty()) {
@@ -36,13 +37,15 @@ public class EncryptedPinBlockVerificationStrategy implements PinVerificationStr
             PinBlockVerificationRequest request = PinBlockVerificationRequest.builder()
                     .pinBlockUnderTPK(pinBlockFromTerminal)
                     .pinBlockUnderLMK(storedPinBlock)
-                    .terminalId(hsmProperties.getPin().getTerminalId())
+                    .terminalId(terminalId)
                     .pan(pan)
                     .pinFormat(hsmProperties.getPin().getFormat())
                     .encryptionAlgorithm(hsmProperties.getPin().getEncryptionAlgorithm())
                     .build();
 
             PinBlockVerificationResponse response = hsmClient.verifyPinBlock(request);
+
+            log.info("PIN verification result: {}", response.isValid() ? "VALID" : "INVALID");
 
             if (response.isValid()) {
                 log.info("PIN verification successful for account: {}. Algorithm: {}, TPK: {}, LMK: {}",

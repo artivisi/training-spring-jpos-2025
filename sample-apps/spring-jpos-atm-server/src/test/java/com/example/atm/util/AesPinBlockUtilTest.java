@@ -15,21 +15,24 @@ class AesPinBlockUtilTest {
             0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10
     }; // 16-byte AES-128 key
 
+    private static final String BANK_UUID = "48a9e84c-ff57-4483-bf83-b255f34a6466";
+
     @Test
     void testEncryptDecryptPinBlock_Iso0() {
         String pin = "1234";
         String pan = "4111111111111111";
+        
 
         // Build clear PIN block
         byte[] clearPinBlock = AesPinBlockUtil.buildClearPinBlock(pin, pan, PinFormat.ISO_0);
         assertEquals(16, clearPinBlock.length, "Clear PIN block should be 16 bytes");
 
         // Encrypt
-        byte[] encrypted = AesPinBlockUtil.encryptPinBlock(clearPinBlock, TEST_TPK_AES128);
+        byte[] encrypted = AesPinBlockUtil.encryptPinBlock(clearPinBlock, TEST_TPK_AES128, BANK_UUID);
         assertEquals(16, encrypted.length, "Encrypted PIN block should be 16 bytes");
 
         // Decrypt
-        byte[] decrypted = AesPinBlockUtil.decryptPinBlock(encrypted, TEST_TPK_AES128);
+        byte[] decrypted = AesPinBlockUtil.decryptPinBlock(encrypted, TEST_TPK_AES128, BANK_UUID);
         assertArrayEquals(clearPinBlock, decrypted, "Decrypted PIN block should match original");
 
         // Extract PIN
@@ -67,7 +70,7 @@ class AesPinBlockUtilTest {
         byte[] invalidKey = new byte[15]; // Wrong size
 
         assertThrows(IllegalArgumentException.class, () ->
-                AesPinBlockUtil.encryptPinBlock(clearPinBlock, invalidKey)
+                AesPinBlockUtil.encryptPinBlock(clearPinBlock, invalidKey, BANK_UUID)
         );
     }
 
@@ -77,7 +80,7 @@ class AesPinBlockUtilTest {
         byte[] validKey = new byte[16];
 
         assertThrows(IllegalArgumentException.class, () ->
-                AesPinBlockUtil.encryptPinBlock(invalidBlock, validKey)
+                AesPinBlockUtil.encryptPinBlock(invalidBlock, validKey, BANK_UUID)
         );
     }
 
@@ -99,8 +102,8 @@ class AesPinBlockUtilTest {
 
         for (String pin : testPins) {
             byte[] clearPinBlock = AesPinBlockUtil.buildClearPinBlock(pin, pan, PinFormat.ISO_0);
-            byte[] encrypted = AesPinBlockUtil.encryptPinBlock(clearPinBlock, TEST_TPK_AES128);
-            byte[] decrypted = AesPinBlockUtil.decryptPinBlock(encrypted, TEST_TPK_AES128);
+            byte[] encrypted = AesPinBlockUtil.encryptPinBlock(clearPinBlock, TEST_TPK_AES128, BANK_UUID);
+            byte[] decrypted = AesPinBlockUtil.decryptPinBlock(encrypted, TEST_TPK_AES128, BANK_UUID);
             String extractedPin = AesPinBlockUtil.extractPinFromIso0Block(decrypted, pan);
 
             assertEquals(pin, extractedPin, "PIN mismatch for length " + pin.length());

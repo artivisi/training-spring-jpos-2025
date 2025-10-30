@@ -1,7 +1,5 @@
 package com.example.atm.jpos.participant;
 
-import com.example.atm.dto.BalanceInquiryRequest;
-import com.example.atm.dto.BalanceInquiryResponse;
 import com.example.atm.exception.AccountNotActiveException;
 import com.example.atm.exception.AccountNotFoundException;
 import com.example.atm.jpos.SpringBeanFactory;
@@ -14,12 +12,13 @@ import org.jpos.transaction.TransactionParticipant;
 import java.io.Serializable;
 
 /**
- * jPOS TransactionParticipant for balance inquiry operations.
+ * jPOS TransactionParticipant for account validation.
+ * Validates that the account exists and is active before proceeding to PIN verification.
+ * This prevents unnecessary PIN verification for non-existent accounts.
  * Note: This class is NOT managed by Spring - it's instantiated by jPOS Q2.
- * Spring beans are accessed via SpringBeanFactory.
  */
 @Slf4j
-public class BalanceInquiryParticipant implements TransactionParticipant {
+public class AccountValidationParticipant implements TransactionParticipant {
 
     private BankService getBankService() {
         return SpringBeanFactory.getBean(BankService.class);
@@ -33,54 +32,38 @@ public class BalanceInquiryParticipant implements TransactionParticipant {
 
             if (msg == null) {
                 log.error("No ISO message in context");
-                return PREPARED | NO_JOIN | READONLY;
-            }
-
-            // Skip processing if an error response code is already set by previous participants
-            String existingResponseCode = (String) ctx.get("RESPONSE_CODE");
-            if (existingResponseCode != null && !"00".equals(existingResponseCode)) {
-                log.debug("Skipping balance inquiry - error response code already set: {}", existingResponseCode);
-                return PREPARED | NO_JOIN | READONLY;
-            }
-
-            String processingCode = msg.getString(3);
-            if (!"310000".equals(processingCode)) {
+                ctx.put("RESPONSE_CODE", "96");
                 return PREPARED | NO_JOIN | READONLY;
             }
 
             String accountNumber = msg.getString(102);
+
             if (accountNumber == null || accountNumber.isEmpty()) {
                 log.error("Account number not found in field 102");
                 ctx.put("RESPONSE_CODE", "30");
-                return PREPARED | NO_JOIN;
+                return PREPARED | NO_JOIN | READONLY;
             }
 
-            log.info("Processing balance inquiry for account: {}", accountNumber);
+            log.debug("Validating account: {}", accountNumber);
 
-            BalanceInquiryRequest request = BalanceInquiryRequest.builder()
-                    .accountNumber(accountNumber)
-                    .build();
+            // Just check if account exists and is active - don't fetch balance yet
+            getBankService().validateAccount(accountNumber);
 
-            BalanceInquiryResponse response = getBankService().balanceInquiry(request);
-
-            ctx.put("BALANCE", response.getBalance());
-            ctx.put("RESPONSE_CODE", "00");
-            ctx.put("ACCOUNT_HOLDER_NAME", response.getAccountHolderName());
-
-            return PREPARED | NO_JOIN;
+            log.debug("Account validation successful for: {}", accountNumber);
+            return PREPARED | NO_JOIN | READONLY;
 
         } catch (AccountNotFoundException e) {
             log.error("Account not found: {}", e.getMessage());
             ctx.put("RESPONSE_CODE", "14");
-            return PREPARED | NO_JOIN;
+            return PREPARED | NO_JOIN | READONLY;
         } catch (AccountNotActiveException e) {
             log.error("Account not active: {}", e.getMessage());
             ctx.put("RESPONSE_CODE", "62");
-            return PREPARED | NO_JOIN;
+            return PREPARED | NO_JOIN | READONLY;
         } catch (Exception e) {
-            log.error("Error processing balance inquiry: ", e);
+            log.error("Error validating account: {}", e.getMessage());
             ctx.put("RESPONSE_CODE", "96");
-            return PREPARED | NO_JOIN;
+            return PREPARED | NO_JOIN | READONLY;
         }
     }
 
