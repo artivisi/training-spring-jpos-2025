@@ -12,8 +12,10 @@ import org.jpos.transaction.TransactionParticipant;
 import java.io.Serializable;
 
 /**
- * jPOS TransactionParticipant for handling terminal-initiated key change requests.
+ * jPOS TransactionParticipant for handling key change requests.
  * Processes MTI 0800 network management messages for key rotation.
+ *
+ * Supports both terminal-initiated and server-initiated key rotation.
  *
  * Field usage:
  * - Field 11: STAN (System Trace Audit Number)
@@ -25,6 +27,9 @@ import java.io.Serializable;
  *   04 = TSK installation confirmed (terminal confirms successful installation)
  *   05 = TPK installation failed (terminal reports failure)
  *   06 = TSK installation failed (terminal reports failure)
+ *   07 = Server-initiated key change notification (terminal should initiate key change)
+ * - Field 70: Network Management Information Code
+ *   301 = Key change notification (used with operation 07)
  * - Field 123 (response): Encrypted new key (for operations 01/02)
  * - Field 39: Response code
  *

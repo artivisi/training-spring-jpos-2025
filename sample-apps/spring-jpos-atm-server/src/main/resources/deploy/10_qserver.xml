@@ -7,6 +7,10 @@
              packager="${jpos.server.packager}">
     </channel>
 
+    <!-- Terminal connection listener: handles sign-on and channel registration -->
+    <request-listener class="com.example.atm.jpos.listener.TerminalConnectionListener" />
+
+    <!-- Main request listener: forwards messages to transaction manager -->
     <request-listener class="com.example.atm.jpos.IsoRequestListener">
         <property name="queue" value="txnmgr" />
         <property name="space" value="tspace:default" />

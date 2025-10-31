@@ -6,7 +6,9 @@
     <property name="max-sessions" value="128" />
     <property name="debug" value="true" />
 
-    <!-- MAC verification must be first to verify message integrity -->
+    <!-- Sign-on validation - terminals must sign on before transacting (allows 0800 messages) -->
+    <participant class="com.example.atm.jpos.participant.SignOnValidationParticipant" logger="Q2" realm="signon-validation" />
+    <!-- MAC verification to verify message integrity -->
     <participant class="com.example.atm.jpos.participant.MacVerificationParticipant" logger="Q2" realm="mac-verification" />
     <!-- Key change handling for network management messages (MTI 0800) -->
     <participant class="com.example.atm.jpos.participant.KeyChangeParticipant" logger="Q2" realm="key-change" />
