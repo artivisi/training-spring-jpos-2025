@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<channel-adaptor name="atm-channel" class="org.jpos.q2.iso.ChannelAdaptor" logger="Q2">
+    <channel class="${jpos.channel.class}"
+             packager="${jpos.packager.class}"
+             logger="Q2"
+             realm="channel">
+        <property name="host" value="${jpos.channel.host}"/>
+        <property name="port" value="${jpos.channel.port}"/>
+        <property name="timeout" value="${jpos.channel.timeout}"/>
+    </channel>
+    <in>atm-send</in>
+    <out>atm-receive</out>
+    <reconnect-delay>10000</reconnect-delay>
+</channel-adaptor>

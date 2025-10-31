@@ -25,6 +25,11 @@ public class AccountService {
             .orElseThrow(() -> new InvalidPinException("Account not found"));
     }
 
+    public Account findByAccountNumber(String accountNumber) {
+        return accountRepository.findByAccountNumber(accountNumber)
+            .orElseThrow(() -> new InvalidPinException("Account not found"));
+    }
+
     public boolean verifyPin(Account account, String pin) {
         return passwordEncoder.matches(pin, account.getPinHash());
     }

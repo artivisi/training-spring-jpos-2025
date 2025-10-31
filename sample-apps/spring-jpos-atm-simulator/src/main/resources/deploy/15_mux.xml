@@ -1,18 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mux class="org.jpos.q2.iso.QMUX" logger="Q2" name="atm-mux">
-    <in>atm-send</in>
-    <out>atm-receive</out>
+<mux class="org.jpos.q2.iso.QMUX" logger="Q2" realm="mux" name="${jpos.mux.name}">
+    <in>atm-receive</in>
+    <out>atm-send</out>
     <unhandled>atm-unhandled</unhandled>
-    <ready>atm-mux.ready</ready>
-
-    <channel class="org.jpos.iso.channel.ASCIIChannel"
-             packager="org.jpos.iso.packager.Base24Packager"
-             logger="Q2">
-        <property name="host" value="localhost"/>
-        <property name="port" value="8000"/>
-        <property name="timeout" value="30000"/>
-    </channel>
+    <ready>atm-channel.ready</ready>
 
     <key>11</key>
-    <mti>11,21</mti>
 </mux>

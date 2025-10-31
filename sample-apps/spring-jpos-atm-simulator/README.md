@@ -235,7 +235,7 @@ mvn clean install
 mvn spring-boot:run
 ```
 
-The application will start on `http://localhost:8080`
+The application will start on `http://localhost:7070`
 
 ## Configuration
 

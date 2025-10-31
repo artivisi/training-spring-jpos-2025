@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const formData = {
             pan: document.getElementById('pan').value,
+            accountNumber: document.getElementById('accountNumber').value,
             pin: document.getElementById('pin').value,
             type: document.getElementById('type').value,
             amount: document.getElementById('type').value === 'WITHDRAWAL' ?

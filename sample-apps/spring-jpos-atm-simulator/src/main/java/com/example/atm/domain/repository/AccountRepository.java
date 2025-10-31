@@ -12,5 +12,9 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
 
     Optional<Account> findByPan(String pan);
 
+    Optional<Account> findByAccountNumber(String accountNumber);
+
     boolean existsByPan(String pan);
+
+    boolean existsByAccountNumber(String accountNumber);
 }

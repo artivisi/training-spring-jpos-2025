@@ -15,6 +15,10 @@ public class TransactionRequest {
     @Pattern(regexp = "\\d{13,19}", message = "PAN must be 13-19 digits")
     private String pan;
 
+    @NotBlank(message = "Account number is required")
+    @Pattern(regexp = "\\d{10,20}", message = "Account number must be 10-20 digits")
+    private String accountNumber;
+
     @NotBlank(message = "PIN is required")
     @Pattern(regexp = "\\d{4,6}", message = "PIN must be 4-6 digits")
     private String pin;

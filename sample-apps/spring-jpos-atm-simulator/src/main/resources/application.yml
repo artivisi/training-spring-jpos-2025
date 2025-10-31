@@ -14,7 +14,6 @@ spring:
     show-sql: true
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
 
   flyway:
@@ -28,20 +27,31 @@ spring:
     suffix: .html
 
 server:
-  port: 8080
+  port: 7070
 
 jpos:
   channel:
     class: org.jpos.iso.channel.ASCIIChannel
     host: localhost
-    port: 8000
+    port: 22222
     timeout: 30000
   packager:
-    class: org.jpos.iso.packager.Base24Packager
+    class: org.jpos.iso.packager.BASE24Packager
   mux:
     name: atm-mux
-  q2:
-    deployDir: deploy
+
+crypto:
+  tpk:
+    key: "246A31D729B280DD7FCDA3BB7F187ABFA1BB0811D7EF3D68FDCA63579F3748B0"
+  tsk:
+    key: "3AC638783EF600FE5E25E8A2EE5B0D222EB810DDF64C3681DD11AFEFAF41614B"
+  bank:
+    uuid: "48a9e84c-ff57-4483-bf83-b255f34a6466"
+
+terminal:
+  id: "ATM-001"
+  institution:
+    id: "TRM-ISS001"
 
 logging:
   level:

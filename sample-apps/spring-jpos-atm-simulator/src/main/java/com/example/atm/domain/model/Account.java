@@ -24,6 +24,9 @@ public class Account {
     @Column(name = "pan", length = 19, unique = true, nullable = false)
     private String pan;
 
+    @Column(name = "account_number", length = 20, unique = true, nullable = false)
+    private String accountNumber;
+
     @Column(name = "pin_hash", nullable = false)
     private String pinHash;
 

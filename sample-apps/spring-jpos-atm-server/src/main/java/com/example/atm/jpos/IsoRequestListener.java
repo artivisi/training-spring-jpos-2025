@@ -11,6 +11,9 @@ import org.jpos.space.Space;
 import org.jpos.space.SpaceFactory;
 import org.jpos.transaction.Context;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+
 @Slf4j
 public class IsoRequestListener implements ISORequestListener, Configurable {
 
@@ -32,6 +35,11 @@ public class IsoRequestListener implements ISORequestListener, Configurable {
         try {
             log.info("Received ISO message: MTI={} STAN={}",
                      msg.getMTI(), msg.getString(11));
+
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            PrintStream ps = new PrintStream(baos);
+            msg.dump(ps, "  ");
+            log.info("Full message dump:\n{}", baos.toString());
 
             Context ctx = new Context();
             ctx.put("SOURCE", source);
