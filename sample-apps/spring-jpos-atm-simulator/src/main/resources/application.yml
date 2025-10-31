@@ -41,6 +41,10 @@ jpos:
     name: atm-mux
 
 crypto:
+  tmk:
+    # Terminal Master Key (TMK) - used to encrypt/decrypt other keys during key exchange
+    # This is a long-lived key that should be securely provisioned to the terminal
+    key: "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF"
   tpk:
     key: "246A31D729B280DD7FCDA3BB7F187ABFA1BB0811D7EF3D68FDCA63579F3748B0"
   tsk:

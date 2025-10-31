@@ -1,9 +1,11 @@
 package com.example.atm.jpos.service;
 
 import com.example.atm.dto.TransactionRequest;
+import com.example.atm.service.RuntimeKeyManager;
 import com.example.atm.util.AesCmacUtil;
 import com.example.atm.util.AesPinBlockUtil;
 import com.example.atm.util.CryptoUtil;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jpos.iso.ISOException;
 import org.jpos.iso.ISOMsg;
@@ -17,17 +19,11 @@ import java.util.Date;
 import java.util.Random;
 
 @Service
+@RequiredArgsConstructor
 @Slf4j
 public class ISO8583MessageBuilder {
 
-    @Value("${crypto.tpk.key}")
-    private String tpkKey;
-
-    @Value("${crypto.tsk.key}")
-    private String tskKey;
-
-    @Value("${crypto.bank.uuid}")
-    private String bankUuid;
+    private final RuntimeKeyManager runtimeKeyManager;
 
     @Value("${terminal.id}")
     private String terminalId;
@@ -88,9 +84,9 @@ public class ISO8583MessageBuilder {
         if (request.getPin() != null && !request.getPin().isEmpty()) {
             byte[] clearPinBlock = AesPinBlockUtil.buildIso0PinBlock(
                     request.getPin(), request.getPan());
-            byte[] tpkMasterKeyBytes = CryptoUtil.hexToBytes(tpkKey);
+            byte[] tpkMasterKeyBytes = CryptoUtil.hexToBytes(runtimeKeyManager.getTpkKey());
             byte[] encryptedPinBlock = AesPinBlockUtil.encryptPinBlock(
-                    clearPinBlock, tpkMasterKeyBytes, bankUuid);
+                    clearPinBlock, tpkMasterKeyBytes, runtimeKeyManager.getBankUuid());
             msg.set(123, encryptedPinBlock);
             log.debug("  Field 123 (AES-256 PIN Block): {} bytes", encryptedPinBlock.length);
         }
@@ -119,10 +115,10 @@ public class ISO8583MessageBuilder {
 
         byte[] macData = msg.pack();
 
-        byte[] tskMasterKeyBytes = CryptoUtil.hexToBytes(tskKey);
+        byte[] tskMasterKeyBytes = CryptoUtil.hexToBytes(runtimeKeyManager.getTskKey());
 
         byte[] mac = AesCmacUtil.generateMacWithKeyDerivation(
-                macData, tskMasterKeyBytes, bankUuid);
+                macData, tskMasterKeyBytes, runtimeKeyManager.getBankUuid());
 
         msg.set(64, mac);
 
@@ -154,16 +150,16 @@ public class ISO8583MessageBuilder {
         clonedMsg.setPackager(packager);
 
         byte[] macData = clonedMsg.pack();
-        byte[] tskMasterKeyBytes = CryptoUtil.hexToBytes(tskKey);
+        byte[] tskMasterKeyBytes = CryptoUtil.hexToBytes(runtimeKeyManager.getTskKey());
 
         log.debug("MAC verification details:");
         log.debug("  MAC data length: {} bytes", macData.length);
         log.debug("  MAC data (first 32 bytes): {}", CryptoUtil.bytesToHex(java.util.Arrays.copyOf(macData, Math.min(32, macData.length))));
-        log.debug("  TSK key: {}", tskKey);
-        log.debug("  Bank UUID: {}", bankUuid);
+        log.debug("  TSK key: {}", runtimeKeyManager.getTskKey());
+        log.debug("  Bank UUID: {}", runtimeKeyManager.getBankUuid());
 
         byte[] calculatedMac = AesCmacUtil.generateMacWithKeyDerivation(
-                macData, tskMasterKeyBytes, bankUuid);
+                macData, tskMasterKeyBytes, runtimeKeyManager.getBankUuid());
 
         boolean isValid = java.util.Arrays.equals(receivedMac, calculatedMac);
 
