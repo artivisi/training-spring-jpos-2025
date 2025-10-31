@@ -2,28 +2,46 @@
 
 ## Overview
 
-This document describes the server-side implementation of ISO-8583 terminal-initiated key rotation with automatic key activation.
+This document describes the server-side implementation of ISO-8583 terminal-initiated key rotation with explicit confirmation.
 
 ## Architecture
 
 ### Components
 
-1. **KeyChangeParticipant** - Handles MTI 0800 key change requests
+1. **KeyChangeParticipant** - Handles MTI 0800 key change requests (operations 01-06)
 2. **KeyRotationService** - Manages key lifecycle and HSM communication
 3. **MacVerificationParticipant** - Verifies MAC with ACTIVE and PENDING keys
-4. **KeyActivationParticipant** - Auto-activates PENDING keys when detected
+4. **KeyActivationParticipant** - Activates PENDING keys on explicit confirmation (operations 03/04)
 5. **ResponseBuilderParticipant** - Builds response with encrypted new key
 6. **CryptoKeyService** - Database operations for key management
 7. **HsmClient** - HTTP client for HSM communication
 
 ### Transaction Flow
 
+**Key Request (operations 01/02):**
 ```
 Request → MacVerificationParticipant (verify MAC)
-       → KeyChangeParticipant (request new key from HSM)
+       → KeyChangeParticipant (request new key from HSM, store as PENDING)
        → ResponseBuilderParticipant (add encrypted key to response)
        → SendResponseParticipant (send response)
-       → KeyActivationParticipant (auto-activate if PENDING key used)
+```
+
+**Key Confirmation (operations 03/04):**
+```
+Request → MacVerificationParticipant (verify MAC with new PENDING key)
+       → KeyChangeParticipant (mark confirmation in context)
+       → ResponseBuilderParticipant (build response)
+       → SendResponseParticipant (send response)
+       → KeyActivationParticipant (activate PENDING key, confirm to HSM)
+```
+
+**Key Failure (operations 05/06):**
+```
+Request → MacVerificationParticipant (verify MAC)
+       → KeyChangeParticipant (mark failure in context)
+       → ResponseBuilderParticipant (build response)
+       → SendResponseParticipant (send response)
+       → KeyActivationParticipant (remove PENDING key, notify HSM)
 ```
 
 ## Key Change Request Processing
@@ -33,8 +51,17 @@ Request → MacVerificationParticipant (verify MAC)
 **Fields**:
 - Field 11: STAN
 - Field 41: Terminal ID
-- Field 53: Operation code (`01` = TPK, `02` = TSK)
+- Field 42: Card Acceptor ID (institution code)
+- Field 53: Operation code (see below)
 - Field 64: MAC
+
+**Operation Codes (Field 53)**:
+- `01` = TPK key request (server sends encrypted new key)
+- `02` = TSK key request (server sends encrypted new key)
+- `03` = TPK installation confirmed (terminal confirms successful installation)
+- `04` = TSK installation confirmed (terminal confirms successful installation)
+- `05` = TPK installation failed (terminal reports failure)
+- `06` = TSK installation failed (terminal reports failure)
 
 ### KeyChangeParticipant.prepare()
 
@@ -71,42 +98,49 @@ Request → MacVerificationParticipant (verify MAC)
 
 Adds key change specific fields to response:
 
-- **Field 123**: Encrypted new key (96 hex chars: 32 IV + 64 ciphertext)
+- **Field 123**: Encrypted new key (128 hex chars: 32 IV + 96 ciphertext)
 - **Field 48**: Key checksum (16 hex chars)
+
+**Note**: Ciphertext is 96 hex chars (48 bytes) due to PKCS5 padding:
+- Plaintext: 32 bytes (new key)
+- PKCS5 adds: 16 bytes (full padding block)
+- Total ciphertext: 48 bytes = 96 hex chars
 
 **Location**: `src/main/java/com/example/atm/jpos/participant/ResponseBuilderParticipant.java:46-62`
 
-## Auto-Activation System
+## Explicit Confirmation System
 
 ### Problem
 
 After terminal receives new key, how does server know when to activate it?
 
-### Solution: Auto-Detection
+### Solution: Explicit Confirmation
 
-Server automatically detects when terminal starts using the new PENDING key through MAC verification.
+Terminal sends explicit confirmation message (operation codes 03/04) after successful key installation.
 
-### MacVerificationParticipant.verifyMac()
+### Complete Flow
 
+**Step 1: Terminal requests key (operation 01/02)**
+- Terminal sends 0800 request with operation code 01 (TPK) or 02 (TSK)
+- Server generates new key via HSM
+- Server stores key as PENDING in database
+- Server responds with encrypted key in field 123
+
+**Step 2: Terminal installs key**
+- Terminal receives encrypted key
+- Terminal decrypts and verifies checksum
+- Terminal tests new key locally
+- Terminal installs new key
+
+**Step 3: Terminal confirms installation (operation 03/04)**
+- Terminal sends 0800 confirmation with operation code 03 (TPK) or 04 (TSK)
+- Terminal uses new PENDING key for MAC generation
+- Server verifies MAC (tries ACTIVE then PENDING keys)
+- Server marks confirmation in context
+
+**Step 4: Server activates key (KeyActivationParticipant.commit)**
 ```java
-1. Try ACTIVE key first
-   - If succeeds: return true, mark key version in context
-2. If ACTIVE fails, try all PENDING keys
-   - If PENDING succeeds:
-     - Mark key version in context
-     - Set ACTIVATE_PENDING_TSK flag in context
-     - Return true
-3. If all keys fail: return false
-```
-
-**Location**: `src/main/java/com/example/atm/jpos/participant/MacVerificationParticipant.java:191`
-
-### KeyActivationParticipant.commit()
-
-Runs **after** response is sent to terminal:
-
-```java
-1. Check for ACTIVATE_PENDING_TSK flag in context
+1. Check for KEY_CHANGE_CONFIRMED flag in context
 2. If set:
    - Call CryptoKeyService.activateKey()
      - Marks PENDING key as ACTIVE
@@ -117,13 +151,22 @@ Runs **after** response is sent to terminal:
 3. Log success
 ```
 
-**Location**: `src/main/java/com/example/atm/jpos/participant/KeyActivationParticipant.java:64`
+**Location**: `src/main/java/com/example/atm/jpos/participant/KeyActivationParticipant.java:87`
 
 **Why in commit() phase?**
 - Runs AFTER response sent
-- Ensures terminal successfully received new key
-- Terminal can use new key immediately
+- Ensures terminal successfully received confirmation response
+- Terminal already using new key
 - No race conditions
+
+### Failure Handling (operation codes 05/06)
+
+If terminal fails to install key:
+- Terminal sends 0800 failure notification with operation code 05 (TPK) or 06 (TSK)
+- Terminal includes failure reason in field 48
+- Server removes PENDING key from database
+- Server notifies HSM of failure
+- Old ACTIVE key remains unchanged
 
 ## Database Schema
 
@@ -174,7 +217,7 @@ Runs **after** response is sent to terminal:
 {
   "rotationId": "ROT-20251031-001",
   "keyType": "TPK",
-  "encryptedNewKey": "A1B2C3...96 hex chars",
+  "encryptedNewKey": "A1B2C3...128 hex chars",
   "newKeyChecksum": "3A5F9B2C8D1E4F7A",
   "gracePeriodEndsAt": "2025-11-01T10:00:00",
   "rotationStatus": "IN_PROGRESS"
@@ -276,11 +319,15 @@ Key activation uses `@Transactional`:
 ### Key Events
 
 ```
-INFO: Received ISO message: MTI=0800 STAN=000001
+INFO: Received ISO message: MTI=0800 STAN=000001 Field53=0200000000000000
 INFO: Processing key change request: terminalId=TRM-ISS001-ATM-001, keyType=TSK
 INFO: Stored new TSK key as PENDING: version=2, rotationId=ROT-20251031-001
-INFO: MAC verified with PENDING TSK key version: 2 - marking for activation
-INFO: Auto-activating PENDING TSK key version 2 for terminal: TRM-ISS001-ATM-001
+INFO: Sent encrypted key to terminal
+
+INFO: Received ISO message: MTI=0800 STAN=000002 Field53=0400000000000000
+INFO: MAC verified with PENDING TSK key version: 2
+INFO: Processing key confirmation: terminalId=TRM-ISS001-ATM-001, keyType=TSK
+INFO: Explicit confirmation received for TSK key installation
 INFO: Successfully activated TSK key version 2 for terminal: TRM-ISS001-ATM-001
 INFO: Successfully confirmed TSK key activation to HSM
 ```

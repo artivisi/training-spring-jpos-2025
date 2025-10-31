@@ -6,6 +6,7 @@ import com.example.atm.jpos.SpringBeanFactory;
 import com.example.atm.service.CryptoKeyService;
 import com.example.atm.service.HsmClient;
 import lombok.extern.slf4j.Slf4j;
+import org.jpos.iso.ISOMsg;
 import org.jpos.transaction.Context;
 import org.jpos.transaction.TransactionParticipant;
 
@@ -34,11 +35,46 @@ public class KeyActivationParticipant implements TransactionParticipant {
     }
 
     /**
-     * Get terminal ID from context.
-     * TODO: Extract from ISO message field 41 in future enhancement.
+     * Get terminal ID from context or ISO message fields 42 + 41.
+     * First checks if KeyChangeParticipant stored it in context,
+     * then extracts from REQUEST message if needed.
      */
     private String getTerminalId(Context ctx) {
-        return "TRM-ISS001-ATM-001";
+        try {
+            // First check if KeyChangeParticipant stored it in context
+            String contextTerminalId = (String) ctx.get("KEY_CHANGE_TERMINAL_ID");
+            if (contextTerminalId != null && !contextTerminalId.trim().isEmpty()) {
+                log.debug("Using terminal ID from context: {}", contextTerminalId);
+                return contextTerminalId.trim();
+            }
+
+            // Extract from REQUEST message
+            ISOMsg msg = (ISOMsg) ctx.get("REQUEST");
+            if (msg == null) {
+                log.warn("No ISO message in context, using default terminal ID");
+                return "TRM-ISS001-ATM-001";
+            }
+
+            // Build full terminal ID from field 42 (institution) + field 41 (terminal)
+            String cardAcceptorId = msg.getString(42);  // e.g., "TRM-ISS001"
+            String terminalId = msg.getString(41);       // e.g., "ATM-001"
+
+            if (terminalId == null || terminalId.trim().isEmpty()) {
+                log.warn("Terminal ID not found in field 41, using default");
+                return "TRM-ISS001-ATM-001";
+            }
+
+            String fullTerminalId = (cardAcceptorId != null && !cardAcceptorId.trim().isEmpty())
+                    ? cardAcceptorId.trim() + "-" + terminalId.trim()
+                    : terminalId.trim();
+
+            log.debug("Extracted terminal ID from message: {}", fullTerminalId);
+            return fullTerminalId;
+
+        } catch (Exception e) {
+            log.error("Error extracting terminal ID: {}", e.getMessage());
+            return "TRM-ISS001-ATM-001";
+        }
     }
 
     @Override
@@ -51,24 +87,47 @@ public class KeyActivationParticipant implements TransactionParticipant {
     public void commit(long id, Serializable context) {
         Context ctx = (Context) context;
         try {
-            // Check if there's a PENDING TSK key to activate
-            Integer pendingTskVersion = (Integer) ctx.get("ACTIVATE_PENDING_TSK");
-            if (pendingTskVersion != null) {
-                String terminalId = getTerminalId(ctx);
-                activatePendingKey(terminalId, CryptoKey.KeyType.TSK, pendingTskVersion);
+            // Check if terminal explicitly confirmed key installation (operation codes 03/04)
+            Boolean keyChangeConfirmed = (Boolean) ctx.get("KEY_CHANGE_CONFIRMED");
+            if (keyChangeConfirmed != null && keyChangeConfirmed) {
+                CryptoKey.KeyType keyType = (CryptoKey.KeyType) ctx.get("KEY_CHANGE_TYPE");
+                String terminalId = (String) ctx.get("KEY_CHANGE_TERMINAL_ID");
+
+                if (keyType != null && terminalId != null) {
+                    // Get the PENDING key version for this terminal/keyType
+                    CryptoKey pendingKey = getCryptoKeyService()
+                            .getPendingKey(terminalId, keyType);
+
+                    if (pendingKey != null) {
+                        log.info("Explicit confirmation received for {} key installation: terminal={}",
+                                keyType, terminalId);
+                        activatePendingKey(terminalId, keyType, pendingKey.getKeyVersion());
+                    } else {
+                        log.warn("No PENDING key found for explicit confirmation: terminal={}, keyType={}",
+                                terminalId, keyType);
+                    }
+                } else {
+                    log.warn("Missing keyType or terminalId in context for key confirmation");
+                }
             }
 
-            // Check if there's a PENDING TPK key to activate
-            Integer pendingTpkVersion = (Integer) ctx.get("ACTIVATE_PENDING_TPK");
-            if (pendingTpkVersion != null) {
-                String terminalId = getTerminalId(ctx);
-                activatePendingKey(terminalId, CryptoKey.KeyType.TPK, pendingTpkVersion);
+            // Check if terminal reported key installation failure (operation codes 05/06)
+            Boolean keyChangeFailed = (Boolean) ctx.get("KEY_CHANGE_FAILED");
+            if (keyChangeFailed != null && keyChangeFailed) {
+                CryptoKey.KeyType keyType = (CryptoKey.KeyType) ctx.get("KEY_CHANGE_TYPE");
+                String terminalId = (String) ctx.get("KEY_CHANGE_TERMINAL_ID");
+                String failureReason = (String) ctx.get("KEY_CHANGE_FAILURE_REASON");
+
+                if (keyType != null && terminalId != null) {
+                    handleKeyInstallationFailure(terminalId, keyType, failureReason);
+                } else {
+                    log.warn("Missing keyType or terminalId in context for key failure");
+                }
             }
 
         } catch (Exception e) {
-            log.error("Error activating PENDING key: {}", e.getMessage(), e);
-            // Don't fail the transaction - key activation failure should not affect the transaction
-            // The PENDING key will remain PENDING and can be activated manually
+            log.error("Error in key activation/failure handling: {}", e.getMessage(), e);
+            // Don't fail the transaction - key operations should not affect the transaction
         }
     }
 
@@ -100,6 +159,57 @@ public class KeyActivationParticipant implements TransactionParticipant {
                     keyType, version, terminalId, e.getMessage(), e);
             throw new RuntimeException("Key activation failed", e);
         }
+    }
+
+    /**
+     * Handle key installation failure reported by terminal.
+     * Removes PENDING key from database and notifies HSM.
+     */
+    private void handleKeyInstallationFailure(String terminalId, CryptoKey.KeyType keyType, String failureReason) {
+        log.error("Handling key installation failure: terminal={}, keyType={}, reason={}",
+                terminalId, keyType, failureReason);
+
+        try {
+            // Remove PENDING key from database
+            getCryptoKeyService().removePendingKey(terminalId, keyType);
+
+            log.info("Removed PENDING {} key after installation failure: terminal={}",
+                    keyType, terminalId);
+
+            // Notify HSM that rotation failed (asynchronously - don't block)
+            notifyHsmFailureAsync(terminalId, keyType, failureReason);
+
+        } catch (Exception e) {
+            log.error("Failed to handle key installation failure: terminal={}, keyType={}, error={}",
+                    terminalId, keyType, e.getMessage(), e);
+            // Don't throw - failure handling should not block transaction
+        }
+    }
+
+    /**
+     * Notify HSM that key rotation failed asynchronously.
+     */
+    private void notifyHsmFailureAsync(String terminalId, CryptoKey.KeyType keyType, String reason) {
+        // For now, just log - HSM notification for failure not implemented yet
+        // In production, this should:
+        // 1. Call HSM API to report rotation failure
+        // 2. Include failure reason
+        // 3. Allow HSM to clean up its records
+        log.warn("HSM failure notification not implemented: terminal={}, keyType={}, reason={}",
+                terminalId, keyType, reason);
+
+        // TODO: Implement HSM failure notification
+        // Example:
+        // try {
+        //     KeyRotationFailure failure = KeyRotationFailure.builder()
+        //             .terminalId(terminalId)
+        //             .keyType(keyType)
+        //             .failureReason(reason)
+        //             .build();
+        //     getHsmClient().notifyRotationFailure(terminalId, failure);
+        // } catch (Exception e) {
+        //     log.error("Failed to notify HSM of rotation failure", e);
+        // }
     }
 
     /**

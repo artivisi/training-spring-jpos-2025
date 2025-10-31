@@ -54,25 +54,44 @@ public class KeyChangeService {
     public CryptoKey initiateKeyChange(CryptoKey.KeyType keyType) throws Exception {
         log.info("Initiating key change for key type: {}", keyType);
 
-        // Build ISO-8583 0800 key change request
-        ISOMsg request = buildKeyChangeRequest(keyType);
+        try {
+            // Build ISO-8583 0800 key change request
+            ISOMsg request = buildKeyChangeRequest(keyType);
 
-        // Send request via MUX
-        log.info("Sending key change request via MUX: {}", muxName);
-        MUX mux = (MUX) NameRegistrar.get(muxName);
+            // Send request via MUX
+            log.info("Sending key change request via MUX: {}", muxName);
+            MUX mux = (MUX) NameRegistrar.get(muxName);
 
-        if (!mux.isConnected()) {
-            throw new RuntimeException("MUX not connected");
+            if (!mux.isConnected()) {
+                throw new RuntimeException("MUX not connected");
+            }
+
+            ISOMsg response = mux.request(request, 30000);
+
+            if (response == null) {
+                throw new RuntimeException("No response from server for key change request");
+            }
+
+            // Parse and process response
+            CryptoKey newKey = processKeyChangeResponse(response, keyType);
+
+            // Send explicit confirmation to server
+            log.info("Key installation successful, sending confirmation to server");
+            sendKeyInstallationConfirmation(keyType, true);
+
+            return newKey;
+
+        } catch (Exception e) {
+            // Send failure notification to server (optional)
+            log.error("Key installation failed: {}", e.getMessage(), e);
+            try {
+                sendKeyInstallationConfirmation(keyType, false);
+            } catch (Exception confirmError) {
+                log.warn("Failed to send key installation failure notification: {}",
+                        confirmError.getMessage());
+            }
+            throw e;
         }
-
-        ISOMsg response = mux.request(request, 30000);
-
-        if (response == null) {
-            throw new RuntimeException("No response from server for key change request");
-        }
-
-        // Parse and process response
-        return processKeyChangeResponse(response, keyType);
     }
 
     /**
@@ -92,9 +111,11 @@ public class KeyChangeService {
         // Field 11: STAN
         msg.set(11, String.format("%06d", System.currentTimeMillis() % 1000000));
 
-        // Field 41: Terminal ID (left-padded to 16 characters)
-        String fullTerminalId = institutionId + "-" + terminalId; // e.g., "TRM-ISS001-ATM-001"
-        msg.set(41, String.format("%-16s", fullTerminalId));
+        // Field 41: Terminal ID (same format as balance inquiry)
+        msg.set(41, terminalId);
+
+        // Field 42: Card Acceptor ID / Institution code (same format as balance inquiry)
+        msg.set(42, institutionId);
 
         // Field 53: Security Control Information (16 digits)
         // First 2 digits: key type (01=TPK, 02=TSK)
@@ -105,7 +126,8 @@ public class KeyChangeService {
         log.info("Built key change request:");
         log.info("  MTI: {}", msg.getMTI());
         log.info("  Field 11 (STAN): {}", msg.getString(11));
-        log.info("  Field 41 (Terminal ID): [{}]", msg.getString(41));
+        log.info("  Field 41 (Terminal ID): {}", msg.getString(41));
+        log.info("  Field 42 (Institution ID): {}", msg.getString(42));
         log.info("  Field 53 (Key Type): {}", msg.getString(53));
 
         return msg;
@@ -135,15 +157,17 @@ public class KeyChangeService {
 
         log.info("Key change approved by server, processing encrypted key");
 
-        // Field 123: Encrypted key (96 hex chars = 32 IV + 64 ciphertext)
+        // Field 123: Encrypted key
+        // Format: [IV (32 hex)] || [Ciphertext (variable length with PKCS5 padding)]
+        // For 256-bit key (32 bytes) with PKCS5 padding: 32 + 96 = 128 hex chars
         String encryptedKeyHex = response.getString(123);
         if (encryptedKeyHex == null || encryptedKeyHex.isEmpty()) {
             throw new RuntimeException("No encrypted key in response field 123");
         }
 
-        if (encryptedKeyHex.length() != 96) {
+        if (encryptedKeyHex.length() < 64) {
             throw new RuntimeException("Invalid encrypted key length in field 123: " +
-                                     encryptedKeyHex.length() + ", expected 96");
+                                     encryptedKeyHex.length() + ", minimum 64 expected");
         }
 
         // Field 48: SHA-256 checksum (16 hex chars)
@@ -189,16 +213,19 @@ public class KeyChangeService {
     }
 
     /**
-     * Decrypt new key from field 123 using current active key.
-     * Per KEY_CHANGE_PROTOCOL.md:
-     * - Field 123 format: [IV (32 hex)] || [Ciphertext (64 hex)]
+     * Decrypt new key from field 123 using derived operational key.
+     * Matches server's CryptoUtil.decryptRotationKey implementation:
+     * - Field 123 format: [IV (16 bytes)] || [Ciphertext (variable length with PKCS5 padding)]
+     * - Hex format: [IV (32 hex)] || [Ciphertext (96 hex for 256-bit key)] = 128 hex chars total
      * - Algorithm: AES-128-CBC with PKCS5Padding
-     * - Decryption key: Current active master key (first 16 bytes = AES-128)
+     * - Decryption key: Derived from current master key using PBKDF2-SHA256
+     * - Derivation context: "KEY_DELIVERY:ROTATION"
+     * - Operational key size: 128 bits (16 bytes)
      */
     private byte[] decryptNewKey(String encryptedKeyHex, CryptoKey.KeyType keyType) throws Exception {
-        // Parse field 123: first 32 chars = IV, next 64 chars = ciphertext
+        // Parse field 123: first 32 chars = IV, remaining chars = ciphertext
         String ivHex = encryptedKeyHex.substring(0, 32);
-        String ciphertextHex = encryptedKeyHex.substring(32, 96);
+        String ciphertextHex = encryptedKeyHex.substring(32);
 
         byte[] iv = CryptoUtil.hexToBytes(ivHex);
         byte[] ciphertext = CryptoUtil.hexToBytes(ciphertextHex);
@@ -206,15 +233,26 @@ public class KeyChangeService {
         log.debug("IV: {} ({} bytes)", ivHex, iv.length);
         log.debug("Ciphertext: {} chars ({} bytes)", ciphertextHex.length(), ciphertext.length);
 
-        // Get current active key (TPK or TSK) for decryption
+        // Get current active master key (TPK or TSK)
         String currentKeyHex = keyType == CryptoKey.KeyType.TPK ?
                               runtimeKeyManager.getTpkKey() :
                               runtimeKeyManager.getTskKey();
 
-        byte[] currentKeyBytes = CryptoUtil.hexToBytes(currentKeyHex);
+        byte[] currentMasterKeyBytes = CryptoUtil.hexToBytes(currentKeyHex);
 
-        // Use first 16 bytes for AES-128 (server uses AES-128-CBC)
-        SecretKeySpec keySpec = new SecretKeySpec(currentKeyBytes, 0, 16, "AES");
+        log.debug("Current {} master key: {} chars ({} bytes)",
+                 keyType, currentKeyHex.length(), currentMasterKeyBytes.length);
+
+        // Derive operational decryption key using same context as server/HSM
+        // Context: "KEY_DELIVERY:ROTATION", Output: 128 bits (16 bytes)
+        String derivationContext = "KEY_DELIVERY:ROTATION";
+        byte[] operationalKey = CryptoUtil.deriveKeyFromParent(
+                currentMasterKeyBytes, derivationContext, 128);
+
+        log.debug("Derived operational key: {} bytes", operationalKey.length);
+
+        // Use derived operational key for AES-128-CBC decryption
+        SecretKeySpec keySpec = new SecretKeySpec(operationalKey, "AES");
         IvParameterSpec ivSpec = new IvParameterSpec(iv);
 
         Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
@@ -254,5 +292,79 @@ public class KeyChangeService {
             case TSK -> "02"; // MAC key
             case TMK -> "00"; // Master key
         };
+    }
+
+    /**
+     * Send key installation confirmation to server via ISO-8583 0800.
+     * Uses field 53 operation codes:
+     * - 03 = TPK installation confirmed
+     * - 04 = TSK installation confirmed
+     * - 05 = TPK installation failed
+     * - 06 = TSK installation failed
+     *
+     * @param keyType Type of key that was installed
+     * @param success True if installation succeeded, false if failed
+     */
+    private void sendKeyInstallationConfirmation(CryptoKey.KeyType keyType, boolean success)
+            throws Exception {
+
+        // Build confirmation operation code
+        String operationCode;
+        if (success) {
+            operationCode = keyType == CryptoKey.KeyType.TPK ? "03" : "04";
+            log.info("Sending key installation SUCCESS confirmation for {}: operation code {}",
+                    keyType, operationCode);
+        } else {
+            operationCode = keyType == CryptoKey.KeyType.TPK ? "05" : "06";
+            log.info("Sending key installation FAILURE notification for {}: operation code {}",
+                    keyType, operationCode);
+        }
+
+        // Build 0800 confirmation message
+        ISOMsg confirmMsg = new ISOMsg();
+        confirmMsg.setPackager(packager);
+        confirmMsg.setMTI("0800");
+
+        // Field 11: STAN
+        confirmMsg.set(11, String.format("%06d", System.currentTimeMillis() % 1000000));
+
+        // Field 41: Terminal ID
+        confirmMsg.set(41, terminalId);
+
+        // Field 42: Institution ID
+        confirmMsg.set(42, institutionId);
+
+        // Field 53: Security Control Information (confirmation operation code)
+        confirmMsg.set(53, operationCode + "00000000000000");
+
+        log.info("Built key installation confirmation message:");
+        log.info("  MTI: {}", confirmMsg.getMTI());
+        log.info("  Field 11 (STAN): {}", confirmMsg.getString(11));
+        log.info("  Field 41 (Terminal ID): {}", confirmMsg.getString(41));
+        log.info("  Field 42 (Institution ID): {}", confirmMsg.getString(42));
+        log.info("  Field 53 (Operation): {}", confirmMsg.getString(53));
+
+        // Send confirmation via MUX
+        MUX mux = (MUX) NameRegistrar.get(muxName);
+
+        if (!mux.isConnected()) {
+            throw new RuntimeException("MUX not connected for confirmation");
+        }
+
+        ISOMsg confirmResponse = mux.request(confirmMsg, 30000);
+
+        if (confirmResponse == null) {
+            throw new RuntimeException("No response from server for confirmation message");
+        }
+
+        // Verify confirmation was accepted
+        String responseCode = confirmResponse.getString(39);
+        if ("00".equals(responseCode)) {
+            log.info("Server acknowledged key installation confirmation: response code {}",
+                    responseCode);
+        } else {
+            log.warn("Server returned non-success response to confirmation: response code {}",
+                    responseCode);
+        }
     }
 }

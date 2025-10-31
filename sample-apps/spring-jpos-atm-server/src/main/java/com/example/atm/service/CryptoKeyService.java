@@ -151,6 +151,44 @@ public class CryptoKeyService {
     }
 
     /**
+     * Remove a PENDING key after installation failure.
+     * Used when terminal reports key installation failure.
+     *
+     * @param terminalId Terminal identifier
+     * @param keyType Key type
+     */
+    @Transactional
+    public void removePendingKey(String terminalId, CryptoKey.KeyType keyType) {
+        log.info("Removing PENDING {} key for terminal: {}", keyType, terminalId);
+
+        // Find the PENDING key
+        CryptoKey pendingKey = getPendingKey(terminalId, keyType);
+        if (pendingKey != null) {
+            cryptoKeyRepository.delete(pendingKey);
+            log.info("Removed PENDING {} key version {} for terminal: {}",
+                    keyType, pendingKey.getKeyVersion(), terminalId);
+        } else {
+            log.warn("No PENDING {} key found to remove for terminal: {}", keyType, terminalId);
+        }
+    }
+
+    /**
+     * Get the PENDING key for a terminal and key type.
+     *
+     * @param terminalId Terminal identifier
+     * @param keyType Key type
+     * @return PENDING key if found, null otherwise
+     */
+    @Transactional(readOnly = true)
+    public CryptoKey getPendingKey(String terminalId, CryptoKey.KeyType keyType) {
+        List<CryptoKey> validKeys = getValidKeys(terminalId, keyType);
+        return validKeys.stream()
+                .filter(key -> key.getStatus() == CryptoKey.KeyStatus.PENDING)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
      * Complete key rotation: add PENDING key and immediately activate it.
      * This is a convenience method that combines addPendingKey + activateKey.
      *

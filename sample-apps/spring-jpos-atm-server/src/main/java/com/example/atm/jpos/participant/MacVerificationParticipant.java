@@ -41,13 +41,45 @@ public class MacVerificationParticipant implements TransactionParticipant {
     }
 
     /**
-     * Get terminal ID from context or default.
-     * TODO: Extract from ISO message field 41 (Card Acceptor Terminal ID) in future enhancement.
+     * Get terminal ID from ISO message fields 42 + 41.
+     * Combines institution code (field 42) with terminal ID (field 41).
+     * Tries REQUEST first, then RESPONSE if REQUEST not available.
      */
     private String getTerminalId(Context ctx) {
-        // For now, use hardcoded terminal ID matching sample data
-        // In production, this should come from field 41 of the ISO message
-        return "TRM-ISS001-ATM-001";
+        try {
+            // Try REQUEST first (prepare phase)
+            ISOMsg msg = (ISOMsg) ctx.get("REQUEST");
+
+            // Try RESPONSE if REQUEST not available (commit phase)
+            if (msg == null) {
+                msg = (ISOMsg) ctx.get("RESPONSE");
+            }
+
+            if (msg == null) {
+                log.warn("No ISO message in context, using default terminal ID");
+                return "TRM-ISS001-ATM-001";
+            }
+
+            // Build full terminal ID from field 42 (institution) + field 41 (terminal)
+            String cardAcceptorId = msg.getString(42);  // e.g., "TRM-ISS001"
+            String terminalId = msg.getString(41);       // e.g., "ATM-001"
+
+            if (terminalId == null || terminalId.trim().isEmpty()) {
+                log.warn("Terminal ID not found in field 41, using default");
+                return "TRM-ISS001-ATM-001";
+            }
+
+            String fullTerminalId = (cardAcceptorId != null && !cardAcceptorId.trim().isEmpty())
+                    ? cardAcceptorId.trim() + "-" + terminalId.trim()
+                    : terminalId.trim();
+
+            log.debug("Extracted terminal ID: {}", fullTerminalId);
+            return fullTerminalId;
+
+        } catch (Exception e) {
+            log.error("Error extracting terminal ID from message: {}", e.getMessage());
+            return "TRM-ISS001-ATM-001";
+        }
     }
 
     /**
@@ -190,7 +222,7 @@ public class MacVerificationParticipant implements TransactionParticipant {
     /**
      * Verify MAC using configured algorithm with TSK key derivation.
      * Tries ACTIVE key first, then PENDING keys if ACTIVE fails.
-     * If a PENDING key succeeds, marks it for activation in context.
+     * Tracks which key version was used for MAC generation in response.
      */
     private boolean verifyMac(byte[] data, byte[] receivedMac, HsmProperties.MacAlgorithm algorithm, Context ctx) {
         String terminalId = getTerminalId(ctx);
@@ -213,10 +245,11 @@ public class MacVerificationParticipant implements TransactionParticipant {
             for (CryptoKey key : validKeys) {
                 if (key.getStatus() == CryptoKey.KeyStatus.PENDING) {
                     if (tryVerifyMacWithKey(data, receivedMac, key, algorithm)) {
-                        log.info("MAC verified with PENDING TSK key version: {} - marking for activation",
+                        log.info("MAC verified with PENDING TSK key version: {}",
                                 key.getKeyVersion());
                         ctx.put("TSK_KEY_VERSION_USED", key.getKeyVersion());
-                        ctx.put("ACTIVATE_PENDING_TSK", key.getKeyVersion());
+                        // Note: PENDING key will only be activated upon explicit confirmation
+                        // (operation codes 03/04) via KeyActivationParticipant
                         return true;
                     }
                 }

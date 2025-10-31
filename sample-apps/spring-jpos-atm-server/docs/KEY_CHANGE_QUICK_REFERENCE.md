@@ -1,14 +1,42 @@
 # Key Change Protocol - Quick Reference
 
-## Request (0800)
+## Request Operations
+
+### Key Request (operations 01/02)
 
 ```
 MTI: 0800
 Field 11: STAN (6 digits)
-Field 41: Terminal ID (16 chars, left-padded)
-Field 53: "01" + "00000000000000" (TPK)
-          "02" + "00000000000000" (TSK)
+Field 41: Terminal ID
+Field 42: Card Acceptor ID
+Field 53: "01" + "00000000000000" (TPK request)
+          "02" + "00000000000000" (TSK request)
 Field 64: MAC (8 bytes)
+```
+
+### Key Confirmation (operations 03/04)
+
+```
+MTI: 0800
+Field 11: STAN (6 digits)
+Field 41: Terminal ID
+Field 42: Card Acceptor ID
+Field 53: "03" + "00000000000000" (TPK confirmation)
+          "04" + "00000000000000" (TSK confirmation)
+Field 64: MAC (8 bytes using NEW key)
+```
+
+### Key Failure (operations 05/06)
+
+```
+MTI: 0800
+Field 11: STAN (6 digits)
+Field 41: Terminal ID
+Field 42: Card Acceptor ID
+Field 48: Failure reason (text)
+Field 53: "05" + "00000000000000" (TPK failure)
+          "06" + "00000000000000" (TSK failure)
+Field 64: MAC (8 bytes using OLD key)
 ```
 
 ## Response (0810)
@@ -21,33 +49,39 @@ Field 41: Terminal ID (echoed)
 Field 48: Key checksum (16 hex chars)
 Field 53: Operation code (echoed)
 Field 64: MAC (8 bytes)
-Field 123: Encrypted new key (96 hex chars)
+Field 123: Encrypted new key (128 hex chars)
 ```
 
 ## Field 123 Structure
 
 ```
-[IV: 32 hex] + [Ciphertext: 64 hex] = 96 hex chars total
+[IV: 32 hex] + [Ciphertext: 96 hex] = 128 hex chars total
 
 Example:
-A1B2C3D4E5F678901234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
-|------------ IV (32) -----------||------------------ Ciphertext (64) ------------------|
+A1B2C3D4E5F678901234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
+|------------ IV (32) -----------||----------------------------------- Ciphertext (96) -----------------------------------|
 ```
+
+**Note**: Ciphertext is 48 bytes (96 hex chars) due to PKCS5 padding:
+- Plaintext: 32 bytes (new key)
+- PKCS5 adds: 16 bytes (full block)
+- Total ciphertext: 48 bytes
 
 ## Decryption Steps
 
 ```java
 // 1. Extract IV and ciphertext
 String ivHex = field123.substring(0, 32);
-String ciphertextHex = field123.substring(32, 96);
+String ciphertextHex = field123.substring(32, 128);
 byte[] iv = hexToBytes(ivHex);
 byte[] ciphertext = hexToBytes(ciphertextHex);
 
-// 2. Decrypt using AES-128-CBC
+// 2. Decrypt using AES-128-CBC with PKCS5Padding
 Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
 SecretKeySpec keySpec = new SecretKeySpec(currentKey, 0, 16, "AES");
 IvParameterSpec ivSpec = new IvParameterSpec(iv);
 cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
+// PKCS5Padding automatically removes padding, returns 32-byte key
 byte[] newKey = cipher.doFinal(ciphertext);
 
 // 3. Verify checksum (field 48)
@@ -87,28 +121,38 @@ if (!checksum.equalsIgnoreCase(field48)) {
 ## Key Activation Flow
 
 ```
-1. Send 0800 request
-2. Receive 0810 response
+1. Send 0800 key request (operation 01/02)
+2. Receive 0810 response with encrypted key
 3. Verify MAC on response
 4. Check response code = "00"
 5. Decrypt field 123
 6. Verify checksum (field 48)
-7. Test new key
-8. Activate new key locally
-9. Mark old key as expired
-10. Use new key in next transaction
-11. Server auto-activates when it detects new key usage
+7. Test new key locally
+8. Store new key as PENDING locally
+9. Send 0800 confirmation (operation 03/04) using NEW key
+10. Receive 0810 confirmation response
+11. Server activates PENDING key → ACTIVE
+12. Terminal activates new key, expires old key
 ```
 
-## Server Auto-Activation
+## Explicit Confirmation Required
 
-**Important**: The server automatically activates PENDING keys:
+**Important**: The server requires explicit confirmation:
 
-- Terminal uses new key → Server detects via MAC verification
-- Server tries ACTIVE key first, then PENDING keys
-- If PENDING key succeeds → Server auto-activates after sending response
+- Terminal sends confirmation message (operation 03/04) using NEW key
+- Server verifies MAC with PENDING key
+- Server activates PENDING key → ACTIVE after sending response
 - Server confirms to HSM automatically
-- **No explicit confirmation message needed from terminal**
+- **Explicit confirmation message IS required from terminal**
+
+## Failure Handling
+
+If installation fails:
+- Terminal sends failure notification (operation 05/06) using OLD key
+- Terminal includes failure reason in field 48
+- Server removes PENDING key from database
+- Server notifies HSM of failure
+- Old ACTIVE key remains unchanged
 
 ## Security Checklist
 
@@ -140,7 +184,7 @@ Field 41: TRM-ISS001-ATM-001
 Field 48: 3A5F9B2C8D1E4F7A
 Field 53: 0100000000000000
 Field 64: [8-byte MAC]
-Field 123: [96 hex chars]
+Field 123: [128 hex chars]
 ```
 
 ### Error Response

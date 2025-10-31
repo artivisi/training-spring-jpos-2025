@@ -29,13 +29,27 @@ This document describes the protocol for terminal-initiated cryptographic key ro
 
 Field 53 contains a 16-digit numeric value where the first 2 digits indicate the operation:
 
-- **01**: TPK (Terminal PIN Key) change request
-- **02**: TSK (Terminal Session Key) change request
-- Remaining 14 digits: Reserved (set to `00000000000000`)
+**Key Request:**
+- **01**: TPK (Terminal PIN Key) key request - server sends encrypted new key
+- **02**: TSK (Terminal Session Key) key request - server sends encrypted new key
+
+**Key Confirmation:**
+- **03**: TPK installation confirmed - terminal confirms successful installation
+- **04**: TSK installation confirmed - terminal confirms successful installation
+
+**Key Failure:**
+- **05**: TPK installation failed - terminal reports installation failure
+- **06**: TSK installation failed - terminal reports installation failure
+
+Remaining 14 digits: Reserved (set to `00000000000000`)
 
 **Examples:**
-- TPK change: `0100000000000000`
-- TSK change: `0200000000000000`
+- TPK request: `0100000000000000`
+- TSK request: `0200000000000000`
+- TPK confirm: `0300000000000000`
+- TSK confirm: `0400000000000000`
+- TPK failure: `0500000000000000`
+- TSK failure: `0600000000000000`
 
 ### Sample Request Message
 
@@ -84,19 +98,19 @@ Field 64: [8-byte MAC]
 The encrypted new key is returned in hexadecimal format with the following structure:
 
 ```
-[IV (32 hex chars)] || [Ciphertext (64 hex chars)]
+[IV (32 hex chars)] || [Ciphertext (96 hex chars)]
 ```
 
-- **Total length**: 96 hexadecimal characters
+- **Total length**: 128 hexadecimal characters (64 bytes)
 - **IV**: 16 bytes (32 hex chars) - Initialization Vector for AES-128-CBC
-- **Ciphertext**: 32 bytes (64 hex chars) - Encrypted new key (256-bit key)
+- **Ciphertext**: 48 bytes (96 hex chars) - Encrypted new key (32-byte key + 16-byte PKCS5 padding)
 - **Encryption algorithm**: AES-128-CBC with PKCS5 padding
 - **Encryption key**: Current active master key (TPK or TSK)
 
 **Example**:
 ```
-A1B2C3D4E5F678901234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
-|------ IV (32 chars) ----------||---------- Ciphertext (64 chars) ----------|
+A1B2C3D4E5F678901234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
+|------ IV (32 chars) ----------||-------------------------------- Ciphertext (96 chars) --------------------------------|
 ```
 
 ### Sample Response Message (Success)
@@ -116,15 +130,16 @@ Field 123: A1B2C3D4E5F678901234567890ABCDEF1234567890ABCDEF1234567890ABCDEF12345
 
 ## Complete Key Change Flow
 
-### Step 1: Terminal Initiates Key Change
+### Step 1: Terminal Requests New Key (operation 01/02)
 
 ```
 Terminal → Server: 0800 Request
 {
   MTI: 0800
   Field 11: 000001
-  Field 41: TRM-ISS001-ATM-001
-  Field 53: 0100000000000000  (TPK change)
+  Field 41: ATM-001
+  Field 42: TRM-ISS001
+  Field 53: 0100000000000000  (TPK request)
   Field 64: [MAC using current TSK]
 }
 ```
@@ -149,7 +164,7 @@ Server → Terminal: 0810 Response
   Field 48: 3A5F9B2C8D1E4F7A  (checksum)
   Field 53: 0100000000000000
   Field 64: [MAC using current TSK]
-  Field 123: [96 hex chars - encrypted new key]
+  Field 123: [128 hex chars - encrypted new key]
 }
 ```
 
@@ -161,47 +176,99 @@ Server → Terminal: 0810 Response
 4. **Decrypt New Key**:
    ```
    IV = first 32 hex chars of field 123
-   Ciphertext = last 64 hex chars of field 123
+   Ciphertext = remaining 96 hex chars of field 123
    NewKey = AES-128-CBC-Decrypt(Ciphertext, CurrentKey, IV)
    ```
 5. **Verify Checksum**:
    ```
    CalculatedChecksum = SHA-256(NewKey)[0:16]
    if (CalculatedChecksum != Field48) {
-       ABORT - Checksum mismatch
+       ABORT - Send failure notification (operation 05/06)
    }
    ```
-6. **Test New Key**: Perform test operation with new key
-7. **Activate New Key**: Store as active, mark old key as expired
-8. **Use New Key**: All subsequent transactions use the new key
+6. **Test New Key**: Perform local test with new key
+7. **Store New Key**: Store as PENDING locally, keep old key as backup
+8. **Send Confirmation or Failure**: Proceed to step 5 or step 6
 
-### Step 5: Server Auto-Activation
+### Step 5: Terminal Confirms Successful Installation (operation 03/04)
 
-**Important**: The server automatically activates the PENDING key when it detects the terminal using it:
+**Important**: Terminal MUST send explicit confirmation after successful installation.
 
-1. **Terminal sends next transaction** (e.g., balance inquiry) with MAC using new key
-2. **Server MAC verification**:
-   - Tries ACTIVE key first
-   - If ACTIVE key fails, tries all PENDING keys
-   - If PENDING key succeeds, marks it for activation
-3. **Server processes transaction** normally
-4. **Server sends response** with MAC using the same key (PENDING)
-5. **Server auto-activation** (after response sent):
-   - Activates the PENDING key in database
-   - Marks old ACTIVE key as EXPIRED
-   - Confirms activation to HSM
-6. **All subsequent transactions** use the newly activated key
+```
+Terminal → Server: 0800 Confirmation
+{
+  MTI: 0800
+  Field 11: 000002
+  Field 41: ATM-001
+  Field 42: TRM-ISS001
+  Field 53: 0300000000000000  (TPK confirmation)
+  Field 64: [MAC using NEW TPK key]
+}
+```
+
+**Server Processing**:
+1. **MAC Verification**: Server tries ACTIVE key first, then PENDING keys
+2. **PENDING Key Detection**: Server detects MAC verified with PENDING key
+3. **Mark Confirmation**: Server marks KEY_CHANGE_CONFIRMED in context
+4. **Send Response**: Server sends 0810 response
+5. **Activate Key** (after response sent):
+   - Server activates PENDING key → ACTIVE
+   - Server expires old ACTIVE key → EXPIRED
+   - Server confirms to HSM
+
+**Response**:
+```
+Server → Terminal: 0810 Response
+{
+  MTI: 0810
+  Field 11: 000002
+  Field 39: 00
+  Field 41: ATM-001
+  Field 64: [MAC using NEW TPK key]
+}
+```
+
+### Step 6: Terminal Reports Installation Failure (operation 05/06)
+
+If terminal fails to install key (decryption error, checksum mismatch, test failure):
+
+```
+Terminal → Server: 0800 Failure
+{
+  MTI: 0800
+  Field 11: 000002
+  Field 41: ATM-001
+  Field 42: TRM-ISS001
+  Field 48: "Checksum mismatch"  (failure reason)
+  Field 53: 0500000000000000  (TPK failure)
+  Field 64: [MAC using OLD/current TSK]
+}
+```
+
+**Server Processing**:
+1. **Log Failure**: Server logs critical security event
+2. **Remove PENDING Key**: Server deletes PENDING key from database
+3. **Notify HSM**: Server reports failure to HSM
+4. **Keep Old Key**: Old ACTIVE key remains active
+5. **Send Acknowledgment**: Server confirms receipt
+
+**Response**:
+```
+Server → Terminal: 0810 Response
+{
+  MTI: 0810
+  Field 11: 000002
+  Field 39: 00  (acknowledgment)
+  Field 41: ATM-001
+  Field 64: [MAC using OLD TSK]
+}
+```
 
 **Grace Period Benefits**:
 - Server accepts both old and new keys during transition
-- Terminal can switch at any time
-- No coordination needed between terminal and server
-- Failed installations don't affect service
-
-**No Explicit Confirmation Required**:
-- Terminal does NOT need to send a separate confirmation message
-- Using the new key IS the confirmation
-- Server detects usage and activates automatically
+- Terminal can test new key before full activation
+- Failed installations logged and cleaned up
+- Old key remains active if installation fails
 
 ---
 
@@ -213,17 +280,18 @@ Server → Terminal: 0810 Response
 public byte[] decryptNewKey(String encryptedKeyHex, byte[] currentMasterKey) {
     // Parse field 123
     String ivHex = encryptedKeyHex.substring(0, 32);
-    String ciphertextHex = encryptedKeyHex.substring(32, 96);
+    String ciphertextHex = encryptedKeyHex.substring(32, 128);
 
     byte[] iv = hexToBytes(ivHex);
     byte[] ciphertext = hexToBytes(ciphertextHex);
 
-    // Decrypt using AES-128-CBC
+    // Decrypt using AES-128-CBC with PKCS5Padding
     Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
     SecretKeySpec keySpec = new SecretKeySpec(currentMasterKey, 0, 16, "AES");
     IvParameterSpec ivSpec = new IvParameterSpec(iv);
     cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
 
+    // PKCS5Padding automatically removes padding, returns 32-byte key
     return cipher.doFinal(ciphertext);
 }
 ```
@@ -473,7 +541,7 @@ public class KeyChangeHandler {
     private byte[] decryptNewKey(String encryptedKeyHex, byte[] currentKey)
             throws Exception {
         String ivHex = encryptedKeyHex.substring(0, 32);
-        String ciphertextHex = encryptedKeyHex.substring(32, 96);
+        String ciphertextHex = encryptedKeyHex.substring(32, 128);
 
         byte[] iv = hexToBytes(ivHex);
         byte[] ciphertext = hexToBytes(ciphertextHex);
@@ -483,6 +551,7 @@ public class KeyChangeHandler {
         IvParameterSpec ivSpec = new IvParameterSpec(iv);
         cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
 
+        // PKCS5Padding automatically removes padding, returns 32-byte key
         return cipher.doFinal(ciphertext);
     }
 
