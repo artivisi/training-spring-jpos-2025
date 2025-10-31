@@ -101,7 +101,8 @@ public class MacVerificationParticipant implements TransactionParticipant {
 
             log.info("MAC verification successful for transaction {}", id);
             ctx.put("MAC_VERIFIED", true);
-            return PREPARED | NO_JOIN | READONLY;
+            // Remove NO_JOIN to allow commit() phase for response MAC generation
+            return PREPARED | READONLY;
 
         } catch (Exception e) {
             log.error("MAC verification error: {}", e.getMessage(), e);
@@ -189,6 +190,12 @@ public class MacVerificationParticipant implements TransactionParticipant {
         String terminalId = getTerminalId(ctx);
         byte[] tskMasterKeyBytes = getTskMasterKeyBytes(terminalId);
         String bankUuid = getBankUuid(terminalId);
+
+        log.debug("SERVER MAC generation details:");
+        log.debug("  MAC data length: {} bytes", data.length);
+        log.debug("  MAC data (first 32 bytes): {}", CryptoUtil.bytesToHex(java.util.Arrays.copyOf(data, Math.min(32, data.length))));
+        log.debug("  TSK key: {}", CryptoUtil.bytesToHex(tskMasterKeyBytes));
+        log.debug("  Bank UUID: {}", bankUuid);
 
         return switch (algorithm) {
             case AES_CMAC -> AesCmacUtil.generateMacWithKeyDerivation(data, tskMasterKeyBytes, bankUuid);

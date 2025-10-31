@@ -74,9 +74,8 @@ public class AtmController {
 
             boolean macValid = messageBuilder.verifyResponseMac(isoResponse);
             if (!macValid) {
-                log.warn("Response MAC verification failed - continuing for testing purposes");
-                // TODO: Re-enable MAC validation after resolving key synchronization
-                // throw new TransactionException("Response MAC verification failed");
+                log.error("Response MAC verification failed - potential security issue!");
+                throw new TransactionException("Response MAC verification failed");
             }
 
             String responseCode = isoResponse.getString(39);

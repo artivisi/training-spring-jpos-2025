@@ -155,6 +155,13 @@ public class ISO8583MessageBuilder {
 
         byte[] macData = clonedMsg.pack();
         byte[] tskMasterKeyBytes = CryptoUtil.hexToBytes(tskKey);
+
+        log.debug("MAC verification details:");
+        log.debug("  MAC data length: {} bytes", macData.length);
+        log.debug("  MAC data (first 32 bytes): {}", CryptoUtil.bytesToHex(java.util.Arrays.copyOf(macData, Math.min(32, macData.length))));
+        log.debug("  TSK key: {}", tskKey);
+        log.debug("  Bank UUID: {}", bankUuid);
+
         byte[] calculatedMac = AesCmacUtil.generateMacWithKeyDerivation(
                 macData, tskMasterKeyBytes, bankUuid);
 
