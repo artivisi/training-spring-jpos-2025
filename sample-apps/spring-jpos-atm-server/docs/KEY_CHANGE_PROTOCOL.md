@@ -567,6 +567,234 @@ public class KeyChangeHandler {
 
 ---
 
+## Testing Guide
+
+### End-to-End Key Change Testing
+
+This section describes how to test the complete key change operation across all components (ATM, Server, HSM).
+
+#### Prerequisites
+
+- ATM simulator running on port 7070
+- ATM server running on port 22222
+- HSM simulator running on port 8080
+- All components connected and healthy
+
+#### Test Procedure
+
+**Step 1: Verify System Before Key Change**
+
+Test that all components are working with current keys:
+
+```bash
+curl -X POST http://localhost:7070/api/transactions/balance \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pan": "4111111111111111",
+    "pin": "1234"
+  }'
+```
+
+**Expected Result**:
+```json
+{
+  "success": true,
+  "balance": 1000.00,
+  "responseCode": "00",
+  "message": "Balance inquiry successful"
+}
+```
+
+**What to verify**:
+- ATM logs show: "MAC verification successful"
+- Server logs show: "MAC verified with ACTIVE TSK key"
+- HSM logs show: "PIN verification successful"
+- No errors in any component
+
+---
+
+**Step 2: Execute Key Change**
+
+Initiate key rotation for TPK (Terminal PIN Key):
+
+```bash
+curl -X POST http://localhost:7070/api/keys/change \
+  -H "Content-Type: application/json" \
+  -d '{
+    "keyType": "TPK"
+  }'
+```
+
+**Expected Result**:
+```json
+{
+  "success": true,
+  "keyType": "TPK",
+  "keyId": "uuid-here",
+  "checkValue": "883F61016",
+  "message": "Key changed successfully via ISO-8583"
+}
+```
+
+**What happens internally**:
+
+1. **ATM → Server** (0800 request, operation 01):
+   ```
+   MTI: 0800
+   Field 53: 0100000000000000 (TPK request)
+   Field 64: MAC using OLD TSK
+   ```
+
+2. **Server → ATM** (0810 response):
+   ```
+   Field 39: 00 (success)
+   Field 48: 883F61016 (checksum)
+   Field 123: [128 hex chars - encrypted new TPK]
+   Field 64: MAC using OLD TSK
+   ```
+
+3. **ATM processes**:
+   - Decrypts new TPK using key derivation
+   - Verifies SHA-256 checksum
+   - Stores new TPK as ACTIVE locally
+   - Reloads key into runtime memory
+
+4. **ATM → Server** (0800 confirmation, operation 03):
+   ```
+   MTI: 0800
+   Field 53: 0300000000000000 (TPK confirmation)
+   Field 64: MAC using NEW TSK
+   ```
+
+5. **Server activates**:
+   - Detects MAC verified with PENDING TSK
+   - Activates PENDING TPK → ACTIVE
+   - Expires old ACTIVE TPK → EXPIRED
+   - Notifies HSM of activation
+
+**Verify in logs**:
+
+ATM logs should show:
+```
+INFO: Initiating key change for key type: TPK
+INFO: Key change approved by server, processing encrypted key
+INFO: Checksum verification successful: 883F61016
+INFO: Key change completed successfully for TPK
+INFO: Key installation successful, sending confirmation to server
+INFO: Server acknowledged key installation confirmation: response code 00
+```
+
+Server logs should show:
+```
+INFO: Processing key change request: terminalId=TRM-ISS001-ATM-001, keyType=TPK
+INFO: Stored new TPK key as PENDING: version=2
+INFO: Processing key confirmation: terminalId=TRM-ISS001-ATM-001, keyType=TPK
+INFO: Explicit confirmation received for TPK key installation
+INFO: Successfully activated TPK key version 2
+INFO: Successfully confirmed TPK key activation to HSM
+```
+
+HSM logs should show:
+```
+INFO: Generated new TPK for terminal: TRM-ISS001-ATM-001
+INFO: Encrypted new key under current TPK
+INFO: Key activation confirmed for terminal: TRM-ISS001-ATM-001, keyType: TPK
+```
+
+---
+
+**Step 3: Verify System After Key Change**
+
+Test that all components are working with NEW keys:
+
+```bash
+curl -X POST http://localhost:7070/api/transactions/balance \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pan": "4111111111111111",
+    "pin": "1234"
+  }'
+```
+
+**Expected Result**:
+```json
+{
+  "success": true,
+  "balance": 1000.00,
+  "responseCode": "00",
+  "message": "Balance inquiry successful"
+}
+```
+
+**What to verify**:
+- ATM logs show: "Using NEW TPK for PIN encryption"
+- ATM logs show: "MAC verification successful" (using NEW TSK from confirmation)
+- Server logs show: "MAC verified with ACTIVE TSK key version: 1" (still old TSK - only TPK changed)
+- HSM logs show: "PIN decrypted successfully using NEW TPK"
+- HSM logs show: "PIN verification successful"
+- No BadPaddingException errors
+- No MAC verification failures
+
+**Critical Success Indicators**:
+- ✅ Balance inquiry succeeds with response code 00
+- ✅ PIN verification succeeds (proves new TPK works end-to-end)
+- ✅ MAC verification succeeds (proves TSK still works)
+- ✅ No errors across ATM, Server, HSM logs
+
+---
+
+**Step 4: Test TSK Key Change (Optional)**
+
+Repeat steps 1-3 for TSK (Terminal Session Key):
+
+```bash
+curl -X POST http://localhost:7070/api/keys/change \
+  -H "Content-Type: application/json" \
+  -d '{
+    "keyType": "TSK"
+  }'
+```
+
+After TSK change, the confirmation message itself uses the NEW TSK for MAC generation, demonstrating the new key is working.
+
+---
+
+### Troubleshooting Test Failures
+
+**Failure at Step 1 (Before Key Change)**:
+- **Symptom**: Balance inquiry fails
+- **Action**: Fix connectivity/configuration issues before attempting key change
+- **Check**: Network connectivity, database connections, key configurations
+
+**Failure at Step 2 (During Key Change)**:
+- **Symptom**: Key change returns success: false
+- **Check Server logs**: Look for errors in key generation, encryption, or HSM communication
+- **Check ATM logs**: Look for decryption errors, checksum mismatches
+- **Common causes**:
+  - Checksum mismatch (server/client using different algorithms)
+  - Decryption failure (key derivation mismatch)
+  - HSM communication failure
+
+**Failure at Step 3 (After Key Change)**:
+- **Symptom**: Balance inquiry fails after successful key change
+- **Error**: BadPaddingException in HSM logs
+- **Root cause**: HSM still using old TPK, activation failed
+- **Check**:
+  - Server logs: Did KeyActivationParticipant activate the key?
+  - HSM logs: Did HSM receive activation confirmation?
+  - Database: Check crypto_keys table, is new key ACTIVE?
+- **Resolution**:
+  - Check explicit confirmation was sent (operation 03/04)
+  - Verify HSM endpoint is reachable from server
+  - Manually activate key if auto-activation failed
+
+**Symptom**: "MAC verification failed" in server logs
+- **Cause**: Terminal using new TSK but server hasn't activated it
+- **Check**: KeyActivationParticipant logs, should show activation
+- **Resolution**: Ensure confirmation message (operation 03/04) was sent
+
+---
+
 ## Support
 
 For implementation questions or issues:
@@ -577,6 +805,6 @@ For implementation questions or issues:
 
 ---
 
-**Document Version**: 1.0
+**Document Version**: 1.1
 **Last Updated**: 2025-10-31
 **Status**: Production Ready
