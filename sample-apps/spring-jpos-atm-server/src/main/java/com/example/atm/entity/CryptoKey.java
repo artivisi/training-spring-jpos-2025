@@ -39,6 +39,9 @@ public class CryptoKey {
     @Column(name = "key_version", nullable = false)
     private Integer keyVersion;
 
+    @Column(name = "rotation_id", length = 100)
+    private String rotationId;
+
     @Column(name = "effective_from", nullable = false)
     private LocalDateTime effectiveFrom;
 

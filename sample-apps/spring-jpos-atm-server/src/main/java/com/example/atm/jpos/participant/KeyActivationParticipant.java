@@ -141,10 +141,14 @@ public class KeyActivationParticipant implements TransactionParticipant {
      * Activate a PENDING key and confirm to HSM.
      */
     private void activatePendingKey(String terminalId, CryptoKey.KeyType keyType, Integer version) {
-        log.info("Auto-activating PENDING {} key version {} for terminal: {}",
+        log.info("Activating PENDING {} key version {} for terminal: {}",
                 keyType, version, terminalId);
 
         try {
+            // Get PENDING key to retrieve rotation ID before activation
+            CryptoKey pendingKey = getCryptoKeyService().getKeyByVersion(terminalId, keyType, version);
+            String rotationId = pendingKey.getRotationId();
+
             // Activate the key in database
             getCryptoKeyService().activateKey(terminalId, keyType, version);
 
@@ -152,7 +156,7 @@ public class KeyActivationParticipant implements TransactionParticipant {
                     keyType, version, terminalId);
 
             // Confirm to HSM (asynchronously - don't block transaction completion)
-            confirmToHsmAsync(terminalId, keyType, version);
+            confirmToHsmAsync(terminalId, keyType, version, rotationId);
 
         } catch (Exception e) {
             log.error("Failed to activate {} key version {} for terminal {}: {}",
@@ -215,33 +219,37 @@ public class KeyActivationParticipant implements TransactionParticipant {
     /**
      * Confirm key activation to HSM asynchronously.
      * This is done in a separate thread to avoid blocking transaction completion.
+     * Uses the rotation ID provided by HSM during key distribution.
      */
-    private void confirmToHsmAsync(String terminalId, CryptoKey.KeyType keyType, Integer version) {
+    private void confirmToHsmAsync(String terminalId, CryptoKey.KeyType keyType, Integer version, String rotationId) {
         // For now, do it synchronously
         // In production, this should be done via async message queue or CompletableFuture
         try {
-            // Generate rotation ID from terminal and version
-            String rotationId = String.format("%s-%s-v%d", terminalId, keyType, version);
+            if (rotationId == null || rotationId.trim().isEmpty()) {
+                log.warn("No rotation ID available for HSM confirmation: terminal={}, keyType={}, version={}",
+                        terminalId, keyType, version);
+                return;
+            }
 
             KeyRotationConfirmation confirmation = KeyRotationConfirmation.builder()
                     .rotationId(rotationId)
-                    .confirmedBy("ATM_SERVER_AUTO_ACTIVATION")
+                    .confirmedBy("ATM_SERVER_EXPLICIT_CONFIRMATION")
                     .build();
 
-            log.debug("Confirming key activation to HSM: terminalId={}, keyType={}, version={}",
-                    terminalId, keyType, version);
+            log.debug("Confirming key activation to HSM: terminalId={}, keyType={}, version={}, rotationId={}",
+                    terminalId, keyType, version, rotationId);
 
             getHsmClient().confirmKeyRotation(terminalId, confirmation);
 
-            log.info("Successfully confirmed {} key activation to HSM: terminal={}, version={}",
-                    keyType, terminalId, version);
+            log.info("Successfully confirmed {} key activation to HSM: terminal={}, version={}, rotationId={}",
+                    keyType, terminalId, version, rotationId);
 
         } catch (Exception e) {
             // Log error but don't fail - key is already activated in database
             // HSM confirmation can be retried manually if needed
             log.error("Failed to confirm key activation to HSM (key already activated locally): " +
-                    "terminal={}, keyType={}, version={}, error={}",
-                    terminalId, keyType, version, e.getMessage());
+                    "terminal={}, keyType={}, version={}, rotationId={}, error={}",
+                    terminalId, keyType, version, rotationId, e.getMessage());
         }
     }
 }

@@ -78,12 +78,13 @@ public class CryptoKeyService {
      * @param bankUuid Bank UUID for key derivation context
      * @param keyType Key type to rotate
      * @param newKeyValue New key value in hex format (64 chars)
+     * @param rotationId HSM rotation ID (UUID from HSM)
      * @return The newly created PENDING key
      */
     @Transactional
     public CryptoKey addPendingKey(String terminalId, String bankUuid,
-                                    CryptoKey.KeyType keyType, String newKeyValue) {
-        log.info("Adding PENDING {} key for terminal: {}", keyType, terminalId);
+                                    CryptoKey.KeyType keyType, String newKeyValue, String rotationId) {
+        log.info("Adding PENDING {} key for terminal: {}, rotationId: {}", keyType, terminalId, rotationId);
 
         // Get next version number
         Integer maxVersion = cryptoKeyRepository.findMaxVersion(terminalId, keyType);
@@ -95,13 +96,14 @@ public class CryptoKeyService {
         newKey.setBankUuid(bankUuid);
         newKey.setKeyType(keyType);
         newKey.setKeyValue(newKeyValue);
+        newKey.setRotationId(rotationId);
         newKey.setStatus(CryptoKey.KeyStatus.PENDING);
         newKey.setKeyVersion(nextVersion);
         newKey.setEffectiveFrom(LocalDateTime.now());
 
         CryptoKey savedKey = cryptoKeyRepository.save(newKey);
-        log.info("Created PENDING {} key version {} for terminal: {}",
-                keyType, nextVersion, terminalId);
+        log.info("Created PENDING {} key version {} for terminal: {}, rotationId: {}",
+                keyType, nextVersion, terminalId, rotationId);
 
         return savedKey;
     }
@@ -196,15 +198,16 @@ public class CryptoKeyService {
      * @param bankUuid Bank UUID
      * @param keyType Key type to rotate
      * @param newKeyValue New key value in hex format
+     * @param rotationId HSM rotation ID (UUID from HSM)
      * @return The newly activated key
      */
     @Transactional
     public CryptoKey rotateKey(String terminalId, String bankUuid,
-                               CryptoKey.KeyType keyType, String newKeyValue) {
+                               CryptoKey.KeyType keyType, String newKeyValue, String rotationId) {
         log.info("Rotating {} key for terminal: {}", keyType, terminalId);
 
         // Add PENDING key
-        CryptoKey pendingKey = addPendingKey(terminalId, bankUuid, keyType, newKeyValue);
+        CryptoKey pendingKey = addPendingKey(terminalId, bankUuid, keyType, newKeyValue, rotationId);
 
         // Immediately activate it
         activateKey(terminalId, keyType, pendingKey.getKeyVersion());

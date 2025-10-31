@@ -68,10 +68,10 @@ public class KeyRotationService {
             throw new RuntimeException("Key checksum mismatch - rotation aborted for security");
         }
 
-        // Step 5: Store new key as PENDING
+        // Step 5: Store new key as PENDING with rotation ID from HSM
         String newKeyHex = CryptoUtil.bytesToHex(decryptedNewKey);
         CryptoKey pendingKey = cryptoKeyService.addPendingKey(
-                terminalId, currentKey.getBankUuid(), keyType, newKeyHex);
+                terminalId, currentKey.getBankUuid(), keyType, newKeyHex, rotationResponse.getRotationId());
 
         log.info("Stored new {} key as PENDING: version={}, rotationId={}",
                 keyType, pendingKey.getKeyVersion(), rotationResponse.getRotationId());
@@ -187,10 +187,10 @@ public class KeyRotationService {
             throw new RuntimeException("Key checksum mismatch - key distribution aborted");
         }
 
-        // Step 5: Store decrypted new key as PENDING (not encrypted version)
+        // Step 5: Store decrypted new key as PENDING (not encrypted version) with rotation ID
         String newKeyHex = CryptoUtil.bytesToHex(decryptedNewKey);
         CryptoKey pendingKey = cryptoKeyService.addPendingKey(
-                terminalId, currentKey.getBankUuid(), keyType, newKeyHex);
+                terminalId, currentKey.getBankUuid(), keyType, newKeyHex, rotationResponse.getRotationId());
 
         log.info("Stored new {} key as PENDING: version={}, rotationId={}",
                 keyType, pendingKey.getKeyVersion(), rotationResponse.getRotationId());
