@@ -38,6 +38,13 @@ public class WithdrawalParticipant implements TransactionParticipant {
                 return PREPARED | NO_JOIN | READONLY;
             }
 
+            String mti = msg.getMTI();
+            // Only process financial transactions (0200), skip network management (0800)
+            if (!"0200".equals(mti)) {
+                log.debug("Skipping withdrawal for MTI: {}", mti);
+                return PREPARED | NO_JOIN | READONLY;
+            }
+
             // Skip processing if an error response code is already set by previous participants
             String existingResponseCode = (String) ctx.get("RESPONSE_CODE");
             if (existingResponseCode != null && !"00".equals(existingResponseCode)) {

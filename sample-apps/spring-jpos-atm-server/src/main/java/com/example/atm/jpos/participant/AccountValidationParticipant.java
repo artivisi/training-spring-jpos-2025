@@ -36,6 +36,13 @@ public class AccountValidationParticipant implements TransactionParticipant {
                 return PREPARED | NO_JOIN | READONLY;
             }
 
+            String mti = msg.getMTI();
+            // Only process financial transactions (0200), skip network management (0800)
+            if (!"0200".equals(mti)) {
+                log.debug("Skipping account validation for MTI: {}", mti);
+                return PREPARED | NO_JOIN | READONLY;
+            }
+
             String accountNumber = msg.getString(102);
 
             if (accountNumber == null || accountNumber.isEmpty()) {

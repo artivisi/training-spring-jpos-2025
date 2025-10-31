@@ -143,6 +143,64 @@ public class KeyRotationService {
     }
 
     /**
+     * Request key distribution for ISO-8583 terminal-initiated key change.
+     * This method requests a new key from HSM but does NOT decrypt or activate it.
+     * The encrypted key is returned to the terminal via ISO-8583 response.
+     *
+     * Flow:
+     * 1. Request new key from HSM (encrypted under current key)
+     * 2. Store encrypted key as PENDING
+     * 3. Return encrypted key to caller for transmission to terminal
+     * 4. Terminal will decrypt, test, and start using new key
+     * 5. Server activates key after detecting successful use
+     *
+     * @param terminalId Terminal identifier
+     * @param keyType Key type to distribute (TPK or TSK)
+     * @return Rotation response containing encrypted new key and metadata
+     */
+    @Transactional
+    public KeyRotationResponse requestKeyDistribution(String terminalId, CryptoKey.KeyType keyType) {
+        log.info("Requesting {} key distribution for terminal: {} via ISO-8583", keyType, terminalId);
+
+        // Step 1: Request new key from HSM (encrypted under current key)
+        KeyRotationResponse rotationResponse = requestRotationFromHsm(
+                terminalId, keyType.name(), 24, "ISO-8583 terminal-initiated key change");
+
+        log.info("Received key distribution response: rotationId={}, keyType={}",
+                rotationResponse.getRotationId(), keyType);
+
+        // Step 2: Get current active key info for storing pending key
+        CryptoKey currentKey = cryptoKeyService.getActiveKey(terminalId, keyType);
+
+        // Step 3: Decrypt to get checksum verification (server needs to verify HSM didn't send corrupted data)
+        byte[] currentMasterKeyBytes = CryptoUtil.hexToBytes(currentKey.getKeyValue());
+        byte[] decryptedNewKey = CryptoUtil.decryptRotationKey(
+                rotationResponse.getEncryptedNewKey(), currentMasterKeyBytes);
+
+        // Step 4: Verify checksum
+        boolean checksumValid = CryptoUtil.verifyKeyChecksum(
+                decryptedNewKey, rotationResponse.getNewKeyChecksum());
+
+        if (!checksumValid) {
+            log.error("Key checksum verification failed! Aborting key distribution: {}",
+                    rotationResponse.getRotationId());
+            throw new RuntimeException("Key checksum mismatch - key distribution aborted");
+        }
+
+        // Step 5: Store decrypted new key as PENDING (not encrypted version)
+        String newKeyHex = CryptoUtil.bytesToHex(decryptedNewKey);
+        CryptoKey pendingKey = cryptoKeyService.addPendingKey(
+                terminalId, currentKey.getBankUuid(), keyType, newKeyHex);
+
+        log.info("Stored new {} key as PENDING: version={}, rotationId={}",
+                keyType, pendingKey.getKeyVersion(), rotationResponse.getRotationId());
+
+        // Step 6: Return rotation response with encrypted key for terminal
+        // Note: We do NOT activate the key yet - wait for terminal to confirm by using it
+        return rotationResponse;
+    }
+
+    /**
      * Test the new key before activating it.
      * This is a placeholder - implement specific tests per key type.
      *

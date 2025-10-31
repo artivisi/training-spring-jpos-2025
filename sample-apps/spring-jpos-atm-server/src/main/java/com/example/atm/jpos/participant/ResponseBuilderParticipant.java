@@ -43,6 +43,25 @@ public class ResponseBuilderParticipant implements TransactionParticipant {
 
                 response.set(39, responseCode);
 
+                // Handle key change response (MTI 0810)
+                if ("0810".equals(responseMTI)) {
+                    String encryptedKey = (String) ctx.get("KEY_CHANGE_ENCRYPTED_KEY");
+                    String keyChecksum = (String) ctx.get("KEY_CHANGE_CHECKSUM");
+
+                    if (encryptedKey != null) {
+                        // Field 123: Encrypted new key from HSM
+                        response.set(123, encryptedKey);
+                        log.debug("Added encrypted key to field 123");
+                    }
+
+                    if (keyChecksum != null) {
+                        // Field 48: Key checksum for verification
+                        response.set(48, keyChecksum);
+                        log.debug("Added key checksum to field 48");
+                    }
+                }
+
+                // Handle financial transaction response fields
                 BigDecimal balance = (BigDecimal) ctx.get("BALANCE");
                 if (balance != null) {
                     String balanceStr = String.format("%012d", balance.multiply(new BigDecimal("100")).longValue());

@@ -1,6 +1,7 @@
 package com.example.atm.jpos.participant;
 
 import java.io.Serializable;
+import java.util.List;
 
 import org.jpos.iso.ISOException;
 import org.jpos.iso.ISOMsg;
@@ -12,6 +13,7 @@ import com.example.atm.config.HsmProperties;
 import com.example.atm.entity.CryptoKey;
 import com.example.atm.jpos.SpringBeanFactory;
 import com.example.atm.service.CryptoKeyService;
+import com.example.atm.service.KeyRotationService;
 import com.example.atm.util.AesCmacUtil;
 import com.example.atm.util.CryptoUtil;
 
@@ -32,6 +34,10 @@ public class MacVerificationParticipant implements TransactionParticipant {
 
     private CryptoKeyService getCryptoKeyService() {
         return SpringBeanFactory.getBean(CryptoKeyService.class);
+    }
+
+    private KeyRotationService getKeyRotationService() {
+        return SpringBeanFactory.getBean(KeyRotationService.class);
     }
 
     /**
@@ -58,6 +64,23 @@ public class MacVerificationParticipant implements TransactionParticipant {
     private String getBankUuid(String terminalId) {
         CryptoKey tskKey = getCryptoKeyService().getActiveKey(terminalId, CryptoKey.KeyType.TSK);
         return tskKey.getBankUuid();
+    }
+
+    /**
+     * Try to verify MAC with a specific key.
+     */
+    private boolean tryVerifyMacWithKey(byte[] data, byte[] receivedMac, CryptoKey key, HsmProperties.MacAlgorithm algorithm) {
+        byte[] keyBytes = CryptoUtil.hexToBytes(key.getKeyValue());
+        String bankUuid = key.getBankUuid();
+
+        return switch (algorithm) {
+            case AES_CMAC -> AesCmacUtil.verifyMacWithKeyDerivation(data, receivedMac, keyBytes, bankUuid);
+            case HMAC_SHA256_TRUNCATED -> {
+                String context = "TSK:" + bankUuid + ":MAC";
+                byte[] tskOperationalKey = CryptoUtil.deriveKeyFromParent(keyBytes, context, 128);
+                yield AesCmacUtil.verifyHmacSha256Truncated(data, receivedMac, tskOperationalKey);
+            }
+        };
     }
 
     @Override
@@ -166,35 +189,76 @@ public class MacVerificationParticipant implements TransactionParticipant {
 
     /**
      * Verify MAC using configured algorithm with TSK key derivation.
+     * Tries ACTIVE key first, then PENDING keys if ACTIVE fails.
+     * If a PENDING key succeeds, marks it for activation in context.
      */
     private boolean verifyMac(byte[] data, byte[] receivedMac, HsmProperties.MacAlgorithm algorithm, Context ctx) {
         String terminalId = getTerminalId(ctx);
-        byte[] tskMasterKeyBytes = getTskMasterKeyBytes(terminalId);
-        String bankUuid = getBankUuid(terminalId);
 
-        return switch (algorithm) {
-            case AES_CMAC -> AesCmacUtil.verifyMacWithKeyDerivation(data, receivedMac, tskMasterKeyBytes, bankUuid);
-            case HMAC_SHA256_TRUNCATED -> {
-                // For HMAC, still use key derivation for consistency
-                String context = "TSK:" + bankUuid + ":MAC";
-                byte[] tskOperationalKey = CryptoUtil.deriveKeyFromParent(tskMasterKeyBytes, context, 128);
-                yield AesCmacUtil.verifyHmacSha256Truncated(data, receivedMac, tskOperationalKey);
+        // Try ACTIVE key first
+        try {
+            CryptoKey activeKey = getCryptoKeyService().getActiveKey(terminalId, CryptoKey.KeyType.TSK);
+            if (tryVerifyMacWithKey(data, receivedMac, activeKey, algorithm)) {
+                log.debug("MAC verified with ACTIVE TSK key version: {}", activeKey.getKeyVersion());
+                ctx.put("TSK_KEY_VERSION_USED", activeKey.getKeyVersion());
+                return true;
             }
-        };
+        } catch (Exception e) {
+            log.warn("Failed to verify MAC with ACTIVE key: {}", e.getMessage());
+        }
+
+        // Try PENDING keys (during grace period)
+        try {
+            List<CryptoKey> validKeys = getCryptoKeyService().getValidKeys(terminalId, CryptoKey.KeyType.TSK);
+            for (CryptoKey key : validKeys) {
+                if (key.getStatus() == CryptoKey.KeyStatus.PENDING) {
+                    if (tryVerifyMacWithKey(data, receivedMac, key, algorithm)) {
+                        log.info("MAC verified with PENDING TSK key version: {} - marking for activation",
+                                key.getKeyVersion());
+                        ctx.put("TSK_KEY_VERSION_USED", key.getKeyVersion());
+                        ctx.put("ACTIVATE_PENDING_TSK", key.getKeyVersion());
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error trying PENDING keys: {}", e.getMessage(), e);
+        }
+
+        log.error("MAC verification failed with all available keys");
+        return false;
     }
 
     /**
      * Generate MAC using configured algorithm with TSK key derivation.
+     * Uses the same key version that was used for request verification.
      */
     private byte[] generateMac(byte[] data, HsmProperties.MacAlgorithm algorithm, Context ctx) {
         String terminalId = getTerminalId(ctx);
-        byte[] tskMasterKeyBytes = getTskMasterKeyBytes(terminalId);
-        String bankUuid = getBankUuid(terminalId);
+
+        // Use the same key version that was used for request verification
+        Integer keyVersionUsed = (Integer) ctx.get("TSK_KEY_VERSION_USED");
+        CryptoKey tskKey;
+
+        if (keyVersionUsed != null) {
+            // Use the specific version that verified the request
+            log.debug("Generating MAC using TSK key version: {}", keyVersionUsed);
+            tskKey = getCryptoKeyService().getKeyByVersion(
+                    terminalId, CryptoKey.KeyType.TSK, keyVersionUsed);
+        } else {
+            // Fallback to active key if version not tracked
+            log.debug("Generating MAC using ACTIVE TSK key (no version tracked)");
+            tskKey = getCryptoKeyService().getActiveKey(terminalId, CryptoKey.KeyType.TSK);
+        }
+
+        byte[] tskMasterKeyBytes = CryptoUtil.hexToBytes(tskKey.getKeyValue());
+        String bankUuid = tskKey.getBankUuid();
 
         log.debug("SERVER MAC generation details:");
         log.debug("  MAC data length: {} bytes", data.length);
         log.debug("  MAC data (first 32 bytes): {}", CryptoUtil.bytesToHex(java.util.Arrays.copyOf(data, Math.min(32, data.length))));
-        log.debug("  TSK key: {}", CryptoUtil.bytesToHex(tskMasterKeyBytes));
+        log.debug("  TSK key version: {}", tskKey.getKeyVersion());
+        log.debug("  TSK key status: {}", tskKey.getStatus());
         log.debug("  Bank UUID: {}", bankUuid);
 
         return switch (algorithm) {

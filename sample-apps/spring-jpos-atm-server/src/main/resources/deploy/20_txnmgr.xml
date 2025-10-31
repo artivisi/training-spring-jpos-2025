@@ -8,6 +8,9 @@
 
     <!-- MAC verification must be first to verify message integrity -->
     <participant class="com.example.atm.jpos.participant.MacVerificationParticipant" logger="Q2" realm="mac-verification" />
+    <!-- Key change handling for network management messages (MTI 0800) -->
+    <participant class="com.example.atm.jpos.participant.KeyChangeParticipant" logger="Q2" realm="key-change" />
+    <!-- Financial transaction participants (only process MTI 0200) -->
     <!-- Account validation before PIN verification - no need to verify PIN for non-existent accounts -->
     <participant class="com.example.atm.jpos.participant.AccountValidationParticipant" logger="Q2" realm="account-validation" />
     <participant class="com.example.atm.jpos.participant.PinVerificationParticipant" logger="Q2" realm="pin-verification" />
@@ -17,4 +20,6 @@
     <participant class="com.example.atm.jpos.participant.ResponseBuilderParticipant" logger="Q2" realm="response-builder" />
     <!-- MAC generation happens in commit phase of SendResponseParticipant -->
     <participant class="com.example.atm.jpos.participant.SendResponseParticipant" logger="Q2" realm="send-response" />
+    <!-- Key activation after response sent - activates PENDING keys when terminal uses them -->
+    <participant class="com.example.atm.jpos.participant.KeyActivationParticipant" logger="Q2" realm="key-activation" />
 </txnmgr>
