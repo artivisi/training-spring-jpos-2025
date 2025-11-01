@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Echo/Heartbeat Service
+  Sends periodic echo messages (0800/301) to keep connection alive and detect problems proactively.
+
+  According to jPOS best practices:
+  - Send echo every 3 minutes (180000 ms) during idle periods
+  - This prevents socket timeout (set to 5 minutes)
+  - Allows detection of connection problems before real transactions fail
+
+  Processing:
+  - Only sends echo if MUX is connected AND terminal is signed on
+  - Logs warnings if echo fails (connection problems)
+  - Automatically recovers from errors
+-->
+<echo class="com.example.atm.jpos.service.EchoService" logger="Q2">
+    <!-- Echo interval in milliseconds (default: 180000 = 3 minutes) -->
+    <property name="interval" value="180000"/>
+</echo>

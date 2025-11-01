@@ -51,26 +51,37 @@ public class AutoSignOnService extends QBeanSupport implements Runnable {
 
     @Override
     public void run() {
-        log.info("AutoSignOnService monitor thread started");
+        log.info("AutoSignOnService monitor thread started - will continuously monitor for reconnections");
+
+        String lastSessionId = null; // Track session to detect reconnections
 
         while (running) {
             try {
                 // Wait for channel to become ready
                 // This will block until the ready indicator is present in the space
-                Object ready = space.in(readyIndicator, 30000);
+                Object ready = space.rd(readyIndicator, 30000); // Use 'rd' instead of 'in' to peek
 
                 if (ready != null && running) {
-                    log.info("Channel ready detected, waiting for MUX connection");
+                    // Get current session ID from ready indicator (if it's a string)
+                    String currentSessionId = ready instanceof String ? (String) ready : ready.toString();
 
-                    // Put the ready indicator back immediately
-                    space.out(readyIndicator, ready);
+                    // Check if this is a new connection (different session ID or first time)
+                    boolean isReconnection = lastSessionId != null && !lastSessionId.equals(currentSessionId);
+                    boolean isFirstConnection = lastSessionId == null;
 
-                    // Check if already signed on
-                    SignOnService signOnService = SpringBeanFactory.getBean(SignOnService.class);
-                    if (signOnService.isSignedOn()) {
-                        log.debug("Already signed on, skipping automatic sign-on");
+                    if (isFirstConnection) {
+                        log.info("Initial channel ready detected, waiting for MUX connection");
+                    } else if (isReconnection) {
+                        log.warn("Channel RECONNECTION detected (session changed: {} -> {})",
+                                lastSessionId, currentSessionId);
+                    } else {
+                        // Same session, channel still connected - wait and check again
+                        Thread.sleep(5000);
                         continue;
                     }
+
+                    // Update session tracking
+                    lastSessionId = currentSessionId;
 
                     // Wait for MUX to be fully connected (max 10 seconds)
                     MuxService muxService = SpringBeanFactory.getBean(MuxService.class);
@@ -84,22 +95,28 @@ public class AutoSignOnService extends QBeanSupport implements Runnable {
                     log.info("MUX connected, initiating automatic sign-on");
 
                     // Trigger sign-on via Spring service
+                    SignOnService signOnService = SpringBeanFactory.getBean(SignOnService.class);
                     try {
                         boolean success = signOnService.signOn();
 
                         if (success) {
-                            log.info("Automatic sign-on completed successfully");
-                            // Sign-on successful, exit the loop
-                            log.info("AutoSignOnService completed, terminating monitor thread");
-                            break;
+                            if (isReconnection) {
+                                log.info("RE-SIGN-ON completed successfully after reconnection");
+                            } else {
+                                log.info("Initial sign-on completed successfully");
+                            }
                         } else {
-                            log.error("Automatic sign-on failed, will retry on next channel ready event");
+                            log.error("Automatic sign-on failed, will retry on next check");
                         }
                     } catch (Exception e) {
                         log.error("Error during automatic sign-on: {}", e.getMessage(), e);
                     }
                 }
 
+            } catch (InterruptedException ie) {
+                log.warn("Monitor thread interrupted");
+                Thread.currentThread().interrupt();
+                break;
             } catch (Exception e) {
                 log.error("Error in AutoSignOnService monitor: {}", e.getMessage(), e);
                 // Brief pause before retrying

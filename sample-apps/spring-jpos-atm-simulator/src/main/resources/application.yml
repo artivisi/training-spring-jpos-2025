@@ -34,7 +34,7 @@ jpos:
     class: org.jpos.iso.channel.ASCIIChannel
     host: localhost
     port: 22222
-    timeout: 300000  # 5 minutes to prevent connection flapping
+    timeout: 0  # No socket timeout - using heartbeat echo messages instead
   packager:
     class: org.jpos.iso.packager.BASE24Packager
   mux:
