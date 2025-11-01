@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Monitors the unhandled message queue for server-initiated messages.
+  Processes messages like key rotation notifications that don't match pending MUX requests.
+
+  Terminal identification is retrieved at runtime from Spring configuration via SignOnService.
+-->
+<unhandled-message-service class="com.example.atm.jpos.service.UnhandledMessageService"
+                           logger="Q2"
+                           realm="unhandled-message-service">
+    <!-- TSpace name -->
+    <property name="space" value="tspace:default"/>
+
+    <!-- Queue name to monitor (must match MUX unhandled queue) -->
+    <property name="queue" value="atm-unhandled"/>
+</unhandled-message-service>

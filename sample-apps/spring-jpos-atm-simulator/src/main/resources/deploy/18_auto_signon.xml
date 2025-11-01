@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Auto Sign-On Service
+  Automatically sends sign-on message (0800/001) when channel becomes ready.
+  This ensures terminal is signed on before attempting any transactions.
+-->
+<auto-signon class="com.example.atm.jpos.service.AutoSignOnService" logger="Q2">
+    <property name="space" value="tspace:default"/>
+    <property name="ready" value="atm-channel.ready"/>
+</auto-signon>

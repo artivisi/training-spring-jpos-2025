@@ -11,4 +11,7 @@
     <in>atm-send</in>
     <out>atm-receive</out>
     <reconnect-delay>10000</reconnect-delay>
+
+    <!-- Server-initiated key rotation notification listener -->
+    <request-listener class="com.example.atm.jpos.listener.KeyRotationNotificationListener" logger="Q2" realm="key-rotation-notification"/>
 </channel-adaptor>

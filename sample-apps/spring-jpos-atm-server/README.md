@@ -53,6 +53,48 @@ curl -X POST http://localhost:8080/api/bank/withdrawal \
   -d '{"accountNumber":"1234567890","amount":500000.00}'
 ```
 
+## Server-Initiated Key Rotation
+
+The server can trigger key rotation remotely for connected terminals via REST API.
+
+### Admin API Endpoints
+
+#### Trigger Key Rotation
+```bash
+# Rotate TSK key for a terminal
+curl -X POST http://localhost:8080/api/admin/key-rotation/rotate/TRM-ISS001-ATM-001?keyType=TSK
+
+# Rotate TPK key for a terminal
+curl -X POST http://localhost:8080/api/admin/key-rotation/rotate/TRM-ISS001-ATM-001?keyType=TPK
+```
+
+#### List Connected Terminals
+```bash
+curl http://localhost:8080/api/admin/key-rotation/connected-terminals
+```
+
+#### Check Terminal Status
+```bash
+curl http://localhost:8080/api/admin/key-rotation/status/TRM-ISS001-ATM-001
+```
+
+### Key Rotation Protocol
+
+1. **Admin triggers rotation** via REST API
+2. **Server sends notification** (0800) to terminal:
+   ```
+   MTI: 0800
+   Field 53: "07" + keyType + "000000000000"  // Operation 07 = key rotation notification
+   Field 70: "301"                            // Key change request
+   ```
+3. **Terminal acknowledges** with 0810
+4. **Terminal initiates key change** (same as terminal-initiated flow)
+5. **HSM generates new key** and encrypts it
+6. **Server sends encrypted key** to terminal
+7. **Terminal activates new key** and confirms to server
+
+This allows centralized key management without manual intervention at each terminal.
+
 ## jPOS ISO-8583 Server
 
 ### Configuration
@@ -83,7 +125,27 @@ jpos:
 | 51 | Insufficient funds |
 | 55 | Incorrect PIN |
 | 62 | Restricted account |
+| 91 | Terminal not signed on |
 | 96 | System error |
+
+### Sign-On Requirement
+
+All terminals **MUST** sign on before performing financial transactions:
+
+```
+MTI 0800
+Field 70: "001"  // Sign-on
+Field 41: Terminal ID
+Field 42: Institution ID
+```
+
+**Sign-off:**
+```
+MTI 0800
+Field 70: "002"  // Sign-off
+```
+
+The server tracks terminal connections and rejects transactions (response code 91) from terminals that haven't completed sign-on.
 
 ## AES-128 PIN & MAC Support
 

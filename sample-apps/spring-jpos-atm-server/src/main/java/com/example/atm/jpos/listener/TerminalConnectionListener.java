@@ -2,6 +2,7 @@ package com.example.atm.jpos.listener;
 
 import com.example.atm.jpos.SpringBeanFactory;
 import com.example.atm.jpos.service.ChannelRegistry;
+import com.example.atm.jpos.util.TerminalIdUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.jpos.iso.ISOChannel;
 import org.jpos.iso.ISOMsg;
@@ -27,25 +28,28 @@ public class TerminalConnectionListener implements org.jpos.iso.ISORequestListen
      * Called when a message is received from a connected terminal.
      * Handles sign-on messages specially to register terminals.
      *
+     * IMPORTANT: Returns false to allow the message to continue to next listeners.
+     * Returning true would stop the chain and prevent transaction manager processing.
+     *
      * @param source The ISO channel that received the message
      * @param m The received ISO message
-     * @return true to allow normal processing, false to stop
+     * @return false to pass message to next listener (IsoRequestListener)
      */
     @Override
     public boolean process(org.jpos.iso.ISOSource source, ISOMsg m) {
         try {
             String mti = m.getMTI();
-            String terminalId = extractTerminalId(m);
+            String terminalId = TerminalIdUtil.extractTerminalId(m);
 
             if (terminalId == null || terminalId.trim().isEmpty()) {
                 log.warn("Cannot process message: missing terminal ID");
-                return true; // Let normal processing handle the error
+                return false; // Pass to next listener
             }
 
             // Get the ISO channel from the source
             if (!(source instanceof ISOChannel)) {
                 log.warn("Source is not an ISOChannel, cannot register");
-                return true;
+                return false; // Pass to next listener
             }
 
             ISOChannel channel = (ISOChannel) source;
@@ -55,13 +59,15 @@ public class TerminalConnectionListener implements org.jpos.iso.ISORequestListen
                 String networkMgmtCode = m.getString(70);
 
                 if ("001".equals(networkMgmtCode)) {
-                    // Sign-on message
+                    // Sign-on message - register the terminal
                     handleSignOn(terminalId, channel);
-                    return true; // Let normal processing send 0810 response
+                    log.info("Sign-on registration complete, passing to transaction manager");
+                    return false; // Pass to IsoRequestListener for response generation
                 } else if ("002".equals(networkMgmtCode)) {
-                    // Sign-off message
+                    // Sign-off message - unregister the terminal
                     handleSignOff(terminalId);
-                    return true;
+                    log.info("Sign-off registration complete, passing to transaction manager");
+                    return false; // Pass to IsoRequestListener for response generation
                 }
             }
 
@@ -69,15 +75,15 @@ public class TerminalConnectionListener implements org.jpos.iso.ISORequestListen
             if (!getChannelRegistry().isSignedOn(terminalId)) {
                 log.error("Terminal not signed on, rejecting request: terminalId={}, MTI={}",
                         terminalId, mti);
-                // Return true but transaction participants will reject it
+                // Still pass to transaction manager - SignOnValidationParticipant will reject it
             }
 
         } catch (Exception e) {
             log.warn("Error in connection listener: {}", e.getMessage());
         }
 
-        // Return true to allow normal processing to continue
-        return true;
+        // Return false to pass message to next listener (IsoRequestListener)
+        return false;
     }
 
     /**
@@ -104,34 +110,5 @@ public class TerminalConnectionListener implements org.jpos.iso.ISORequestListen
         log.info("Processing sign-off: terminalId={}", terminalId);
         getChannelRegistry().signOff(terminalId);
         log.info("Terminal signed off: {}", terminalId);
-    }
-
-    /**
-     * Extract terminal ID from ISO message fields.
-     * Combines field 42 (Card Acceptor ID) with field 41 (Terminal ID).
-     *
-     * @param m ISO message
-     * @return Terminal ID in format "INSTITUTION-TERMINAL" or null if not found
-     */
-    private String extractTerminalId(ISOMsg m) {
-        try {
-            String cardAcceptorId = m.getString(42);  // e.g., "TRM-ISS001"
-            String terminalId = m.getString(41);       // e.g., "ATM-001"
-
-            if (terminalId == null || terminalId.trim().isEmpty()) {
-                return null;
-            }
-
-            // Combine both fields if card acceptor ID is present
-            if (cardAcceptorId != null && !cardAcceptorId.trim().isEmpty()) {
-                return cardAcceptorId.trim() + "-" + terminalId.trim();
-            }
-
-            return terminalId.trim();
-
-        } catch (Exception e) {
-            log.debug("Could not extract terminal ID from message: {}", e.getMessage());
-            return null;
-        }
     }
 }

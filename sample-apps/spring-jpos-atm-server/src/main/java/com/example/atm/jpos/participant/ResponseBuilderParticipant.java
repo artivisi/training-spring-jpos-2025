@@ -20,6 +20,13 @@ public class ResponseBuilderParticipant implements TransactionParticipant {
     public int prepare(long id, Serializable context) {
         Context ctx = (Context) context;
         try {
+            // Check if response already built by another participant (e.g., SignOnResponseParticipant)
+            ISOMsg existingResponse = (ISOMsg) ctx.get("RESPONSE");
+            if (existingResponse != null) {
+                log.debug("Response already built by another participant, skipping");
+                return PREPARED | NO_JOIN | READONLY;
+            }
+
             ISOMsg request = (ISOMsg) ctx.get("REQUEST");
             String responseCode = (String) ctx.get("RESPONSE_CODE");
 

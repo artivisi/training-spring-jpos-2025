@@ -2,6 +2,7 @@ package com.example.atm.service;
 
 import com.example.atm.entity.CryptoKey;
 import com.example.atm.jpos.service.ChannelRegistry;
+import com.example.atm.jpos.util.TerminalIdUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jpos.iso.ISOChannel;
@@ -66,7 +67,7 @@ public class ServerInitiatedKeyRotationService {
      * @param keyType Key type (TPK or TSK)
      * @return ISO message ready to send
      */
-    private ISOMsg buildKeyRotationNotification(String terminalId, CryptoKey.KeyType keyType) throws ISOException {
+    private ISOMsg buildKeyRotationNotification(String terminalId, CryptoKey.KeyType keyType) throws Exception {
         ISOMsg msg = new ISOMsg();
         msg.setMTI("0800");
 
@@ -74,16 +75,8 @@ public class ServerInitiatedKeyRotationService {
         String stan = String.format("%06d", System.currentTimeMillis() % 1000000);
         msg.set(11, stan);
 
-        // Field 41: Terminal ID (extract from full terminal ID)
-        String[] parts = terminalId.split("-");
-        String termId = parts.length > 2 ? parts[parts.length - 1] : terminalId;
-        msg.set(41, String.format("%-16s", termId));  // Left-padded to 16 chars
-
-        // Field 42: Card Acceptor ID (institution code)
-        if (parts.length > 2) {
-            String institution = parts[0] + "-" + parts[1];
-            msg.set(42, String.format("%-15s", institution));
-        }
+        // Set terminal identification fields using utility
+        TerminalIdUtil.setTerminalIdFields(msg, terminalId);
 
         // Field 53: Security Related Control Information
         // Operation code 07 = Server-initiated key change notification

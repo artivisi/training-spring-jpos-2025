@@ -3,6 +3,7 @@ package com.example.atm.jpos.participant;
 import com.example.atm.dto.rotation.KeyRotationResponse;
 import com.example.atm.entity.CryptoKey;
 import com.example.atm.jpos.SpringBeanFactory;
+import com.example.atm.jpos.util.TerminalIdUtil;
 import com.example.atm.service.KeyRotationService;
 import lombok.extern.slf4j.Slf4j;
 import org.jpos.iso.ISOMsg;
@@ -62,28 +63,24 @@ public class KeyChangeParticipant implements TransactionParticipant {
                 return PREPARED | NO_JOIN | READONLY;
             }
 
+            // Check if this is a key change message (field 53 present)
             String securityControl = request.getString(53);
             if (securityControl == null || securityControl.length() < 2) {
-                log.error("Invalid or missing security control information in field 53");
-                ctx.put("RESPONSE_CODE", "30");
+                // Not a key change message (e.g., sign-on uses field 70 instead)
+                log.debug("No field 53 present, not a key change message");
                 return PREPARED | NO_JOIN | READONLY;
             }
 
             String operationCode = securityControl.substring(0, 2);
 
-            // Build full terminal ID from field 42 (institution) + field 41 (terminal)
-            String cardAcceptorId = request.getString(42);  // e.g., "TRM-ISS001"
-            String terminalId = request.getString(41);       // e.g., "ATM-001"
+            // Extract full terminal ID from ISO message fields
+            String fullTerminalId = TerminalIdUtil.extractTerminalId(request);
 
-            if (terminalId == null || terminalId.trim().isEmpty()) {
-                log.error("Terminal ID not found in field 41");
+            if (fullTerminalId == null || fullTerminalId.trim().isEmpty()) {
+                log.error("Terminal ID not found in message fields");
                 ctx.put("RESPONSE_CODE", "30");
                 return PREPARED | NO_JOIN | READONLY;
             }
-
-            String fullTerminalId = (cardAcceptorId != null && !cardAcceptorId.trim().isEmpty())
-                    ? cardAcceptorId.trim() + "-" + terminalId.trim()
-                    : terminalId.trim();
 
             // Route to appropriate handler based on operation code
             switch (operationCode) {

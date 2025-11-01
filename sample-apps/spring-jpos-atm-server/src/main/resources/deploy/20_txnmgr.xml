@@ -10,7 +10,9 @@
     <participant class="com.example.atm.jpos.participant.SignOnValidationParticipant" logger="Q2" realm="signon-validation" />
     <!-- MAC verification to verify message integrity -->
     <participant class="com.example.atm.jpos.participant.MacVerificationParticipant" logger="Q2" realm="mac-verification" />
-    <!-- Key change handling for network management messages (MTI 0800) -->
+    <!-- Sign-on/sign-off response handling (MTI 0800 with field 70) -->
+    <participant class="com.example.atm.jpos.participant.SignOnResponseParticipant" logger="Q2" realm="signon-response" />
+    <!-- Key change handling for network management messages (MTI 0800 with field 53) -->
     <participant class="com.example.atm.jpos.participant.KeyChangeParticipant" logger="Q2" realm="key-change" />
     <!-- Financial transaction participants (only process MTI 0200) -->
     <!-- Account validation before PIN verification - no need to verify PIN for non-existent accounts -->

@@ -9,6 +9,40 @@ A comprehensive ATM simulator application built with Spring Boot and jPOS for IS
 - **Cash Withdrawal** - Withdraw funds from account
 - **Key Change** - Update cryptographic keys (TMK, TPK, TSK)
 
+### Network Management
+- **Automatic Sign-On** - Automatically sends sign-on message upon connection
+- **Server-Initiated Key Rotation** - Receives and handles key rotation notifications from server
+- **Sign-On Status API** - REST endpoints to check and manage sign-on state
+
+### REST API Endpoints
+
+#### Transaction Endpoints
+- `POST /atm/transaction` - Execute balance inquiry or withdrawal
+- `GET /atm` - Main ATM interface
+
+#### Sign-On Management
+- `GET /atm/status/signon` - Check current sign-on status
+- `POST /atm/signon` - Manually trigger sign-on
+- `POST /atm/signoff` - Manually trigger sign-off
+
+**Example:**
+```bash
+# Check sign-on status
+curl http://localhost:8081/atm/status/signon
+
+# Response:
+{
+  "signedOn": true,
+  "timestamp": "2025-10-31T08:30:00"
+}
+
+# Manual sign-on
+curl -X POST http://localhost:8081/atm/signon
+
+# Manual sign-off
+curl -X POST http://localhost:8081/atm/signoff
+```
+
 ## User Experience
 
 ### ATM Transaction Flow
@@ -197,6 +231,60 @@ The application uses jPOS ASCIIChannel for communication and Base24Packager for 
 
 - **ASCIIChannel**: Handles ASCII-encoded ISO 8583 message transmission
 - **Base24Packager**: Implements ACI BASE24 message format specifications
+
+## Network Management Features
+
+### Automatic Sign-On
+
+The ATM simulator automatically sends a sign-on message when the connection is established.
+
+**Implementation:**
+- `AutoSignOnService` - Q2 service that monitors channel ready state
+- `SignOnService` - Spring service that sends sign-on/sign-off messages
+- Configured in `18_auto_signon.xml` deployment descriptor
+
+**Sign-On Message:**
+```
+MTI: 0800
+Field 11: STAN (System Trace Audit Number)
+Field 41: Terminal ID
+Field 42: Institution ID
+Field 70: "001"  // Network Management Code = Sign-on
+```
+
+**Sign-Off Message:**
+```
+MTI: 0800
+Field 70: "002"  // Network Management Code = Sign-off
+```
+
+The server tracks terminal sign-on status and **rejects all financial transactions** (response code 91) from terminals that haven't completed sign-on.
+
+### Server-Initiated Key Rotation
+
+The ATM can receive key rotation notifications from the server and automatically initiate the key change process.
+
+**Flow:**
+1. **Server sends notification** (0800 with field 53 operation code 07)
+2. **ATM acknowledges** with 0810 response
+3. **ATM automatically initiates key change** in background thread
+4. **Key change proceeds** using standard terminal-initiated protocol
+
+**Implementation:**
+- `KeyRotationNotificationListener` - Handles incoming 0800 notifications
+- `KeyChangeService.changeKey()` - Initiates key change for TPK or TSK
+- Configured in `12_channel.xml` as request-listener
+
+**Notification Message from Server:**
+```
+MTI: 0800
+Field 53: "07" + keyType + "000000000000"
+  - "0701..." = TPK rotation notification
+  - "0702..." = TSK rotation notification
+Field 70: "301"  // Key change request
+```
+
+This allows centralized key management where administrators can trigger key rotation from the server without manual intervention at each ATM.
 - **Message Processing**: All ISO 8583 messages are packed/unpacked using Base24 format
 
 **Example ISO 8583 Message Fields (BASE24):**

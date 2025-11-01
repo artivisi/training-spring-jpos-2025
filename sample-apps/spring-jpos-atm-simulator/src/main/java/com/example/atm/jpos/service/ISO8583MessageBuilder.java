@@ -5,6 +5,7 @@ import com.example.atm.service.RuntimeKeyManager;
 import com.example.atm.util.AesCmacUtil;
 import com.example.atm.util.AesPinBlockUtil;
 import com.example.atm.util.CryptoUtil;
+import com.example.atm.util.TerminalIdUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jpos.iso.ISOException;
@@ -71,11 +72,8 @@ public class ISO8583MessageBuilder {
         SimpleDateFormat dateFormat = new SimpleDateFormat("MMdd");
         msg.set(13, dateFormat.format(new Date()));
 
-        // Field 41: Terminal ID
-        msg.set(41, terminalId);
-
-        // Field 42: Card Acceptor ID (institution code)
-        msg.set(42, institutionId);
+        // Set terminal identification fields using utility
+        TerminalIdUtil.setTerminalIdFields(msg, terminalId, institutionId);
 
         // Field 102: Account Number
         msg.set(102, accountNumber);

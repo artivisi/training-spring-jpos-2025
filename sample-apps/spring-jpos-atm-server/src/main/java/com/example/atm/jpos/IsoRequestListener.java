@@ -32,6 +32,7 @@ public class IsoRequestListener implements ISORequestListener, Configurable {
     @SuppressWarnings("unchecked")
     @Override
     public boolean process(ISOSource source, ISOMsg msg) {
+        log.info("IsoRequestListener.process() called - START");
         try {
             log.info("Received ISO message: MTI={} STAN={}",
                      msg.getMTI(), msg.getString(11));

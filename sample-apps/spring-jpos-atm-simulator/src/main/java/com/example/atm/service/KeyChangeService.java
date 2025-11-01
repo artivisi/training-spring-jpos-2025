@@ -1,14 +1,14 @@
 package com.example.atm.service;
 
 import com.example.atm.domain.model.CryptoKey;
+import com.example.atm.jpos.service.MuxService;
 import com.example.atm.util.CryptoUtil;
+import com.example.atm.util.TerminalIdUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jpos.iso.ISOException;
 import org.jpos.iso.ISOMsg;
-import org.jpos.iso.MUX;
 import org.jpos.iso.packager.BASE24Packager;
-import org.jpos.util.NameRegistrar;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,7 +34,7 @@ public class KeyChangeService {
 
     private final CryptoKeyService cryptoKeyService;
     private final RuntimeKeyManager runtimeKeyManager;
-    private final String muxName;
+    private final MuxService muxService;
 
     @Value("${terminal.id}")
     private String terminalId;
@@ -43,6 +43,24 @@ public class KeyChangeService {
     private String institutionId;
 
     private final BASE24Packager packager = new BASE24Packager();
+
+    /**
+     * Change key by initiating key change request to server.
+     * This method can be called from both terminal-initiated and server-initiated flows.
+     *
+     * @param keyType Type of key to rotate (TPK or TSK as string)
+     * @throws RuntimeException if key change fails
+     */
+    public void changeKey(String keyType) {
+        try {
+            CryptoKey.KeyType type = CryptoKey.KeyType.valueOf(keyType.toUpperCase());
+            initiateKeyChange(type);
+            log.info("Key change completed successfully for: {}", keyType);
+        } catch (Exception e) {
+            log.error("Key change failed for {}: {}", keyType, e.getMessage(), e);
+            throw new RuntimeException("Key change failed: " + e.getMessage(), e);
+        }
+    }
 
     /**
      * Initiate key change request to server via ISO-8583.
@@ -58,15 +76,9 @@ public class KeyChangeService {
             // Build ISO-8583 0800 key change request
             ISOMsg request = buildKeyChangeRequest(keyType);
 
-            // Send request via MUX
-            log.info("Sending key change request via MUX: {}", muxName);
-            MUX mux = (MUX) NameRegistrar.get(muxName);
-
-            if (!mux.isConnected()) {
-                throw new RuntimeException("MUX not connected");
-            }
-
-            ISOMsg response = mux.request(request, 30000);
+            // Send request via MuxService
+            log.info("Sending key change request via MUX");
+            ISOMsg response = muxService.request(request);
 
             if (response == null) {
                 throw new RuntimeException("No response from server for key change request");
@@ -99,11 +111,12 @@ public class KeyChangeService {
      * Per KEY_CHANGE_PROTOCOL.md:
      * - MTI: 0800
      * - Field 11: STAN (6 digits)
-     * - Field 41: Terminal ID (16 chars, left-padded with spaces)
+     * - Field 41: Terminal ID (15 chars, left-padded with spaces)
+     * - Field 42: Institution ID (15 chars, left-padded with spaces)
      * - Field 53: Key type (16 digits: "0100000000000000" for TPK, "0200000000000000" for TSK)
      * - Field 64: MAC
      */
-    private ISOMsg buildKeyChangeRequest(CryptoKey.KeyType keyType) throws ISOException {
+    private ISOMsg buildKeyChangeRequest(CryptoKey.KeyType keyType) throws Exception {
         ISOMsg msg = new ISOMsg();
         msg.setPackager(packager);
         msg.setMTI("0800");
@@ -111,11 +124,8 @@ public class KeyChangeService {
         // Field 11: STAN
         msg.set(11, String.format("%06d", System.currentTimeMillis() % 1000000));
 
-        // Field 41: Terminal ID (same format as balance inquiry)
-        msg.set(41, terminalId);
-
-        // Field 42: Card Acceptor ID / Institution code (same format as balance inquiry)
-        msg.set(42, institutionId);
+        // Set terminal identification fields using utility
+        TerminalIdUtil.setTerminalIdFields(msg, terminalId, institutionId);
 
         // Field 53: Security Control Information (16 digits)
         // First 2 digits: key type (01=TPK, 02=TSK)
@@ -328,11 +338,8 @@ public class KeyChangeService {
         // Field 11: STAN
         confirmMsg.set(11, String.format("%06d", System.currentTimeMillis() % 1000000));
 
-        // Field 41: Terminal ID
-        confirmMsg.set(41, terminalId);
-
-        // Field 42: Institution ID
-        confirmMsg.set(42, institutionId);
+        // Set terminal identification fields using utility
+        TerminalIdUtil.setTerminalIdFields(confirmMsg, terminalId, institutionId);
 
         // Field 53: Security Control Information (confirmation operation code)
         confirmMsg.set(53, operationCode + "00000000000000");
@@ -344,14 +351,8 @@ public class KeyChangeService {
         log.info("  Field 42 (Institution ID): {}", confirmMsg.getString(42));
         log.info("  Field 53 (Operation): {}", confirmMsg.getString(53));
 
-        // Send confirmation via MUX
-        MUX mux = (MUX) NameRegistrar.get(muxName);
-
-        if (!mux.isConnected()) {
-            throw new RuntimeException("MUX not connected for confirmation");
-        }
-
-        ISOMsg confirmResponse = mux.request(confirmMsg, 30000);
+        // Send confirmation via MuxService
+        ISOMsg confirmResponse = muxService.request(confirmMsg);
 
         if (confirmResponse == null) {
             throw new RuntimeException("No response from server for confirmation message");
