@@ -14,6 +14,11 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Web controller for cryptographic key management UI.
+ * Handles Thymeleaf page rendering and form submissions for key rotation.
+ * Business logic is delegated to KeyChangeService.
+ */
 @Controller
 @RequestMapping("/keys")
 @RequiredArgsConstructor
@@ -28,6 +33,10 @@ public class KeyManagementController {
         return "key-management";
     }
 
+    /**
+     * Execute key change operation.
+     * Delegates to KeyChangeService for business logic.
+     */
     @PostMapping("/change")
     @ResponseBody
     public Map<String, Object> changeKey(@Valid @RequestBody KeyChangeRequest request,
@@ -41,25 +50,24 @@ public class KeyManagementController {
                 return response;
             }
 
-            log.info("Initiating key change for key type: {}", request.getKeyType());
+            log.info("Web: Key change request received: keyType={}", request.getKeyType());
 
             // Convert DTO enum to entity enum
             CryptoKey.KeyType keyType = CryptoKey.KeyType.valueOf(request.getKeyType().name());
 
-            // Initiate ISO-8583 key change request to server
+            // Delegate to service layer
             CryptoKey newKey = keyChangeService.initiateKeyChange(keyType);
 
             response.put("success", true);
-            response.put("keyType", newKey.getKeyType());
-            response.put("keyId", newKey.getId());
+            response.put("keyType", newKey.getKeyType().name());
+            response.put("keyId", newKey.getId().toString());
             response.put("checkValue", newKey.getCheckValue());
             response.put("message", "Key changed successfully via ISO-8583");
 
-            log.info("Key change completed: keyType={}, keyId={}, KCV={}",
-                    newKey.getKeyType(), newKey.getId(), newKey.getCheckValue());
+            log.info("Web: Key change completed successfully");
 
         } catch (Exception e) {
-            log.error("Key change failed", e);
+            log.error("Web: Key change failed: {}", e.getMessage(), e);
             response.put("success", false);
             response.put("message", "Key change failed: " + e.getMessage());
         }

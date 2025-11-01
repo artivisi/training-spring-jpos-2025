@@ -6,9 +6,69 @@
     <title>ATM Simulator</title>
 </head>
 <body>
-    <h1 layout:fragment="page-title" class="text-2xl font-bold text-center mb-6">ATM Simulator</h1>
+    <h1 layout:fragment="page-title" class="text-2xl font-bold text-center mb-6">
+        <a href="/" class="text-indigo-600 hover:text-indigo-800 mr-2">←</a>
+        ATM Simulator
+    </h1>
 
     <div layout:fragment="content">
+        <!-- Progress Indicator (hidden by default) -->
+        <div id="progressIndicator" class="hidden mb-4 p-4 rounded bg-blue-50 border border-blue-200">
+            <div class="flex items-center">
+                <svg class="animate-spin h-5 w-5 mr-3 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-blue-700 font-medium" id="progressText">Processing transaction...</span>
+            </div>
+        </div>
+
+        <!-- Result Display -->
+        <div id="result" class="hidden mb-4"></div>
+
+        <!-- Sample Test Data Panel -->
+        <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h3 class="font-bold text-blue-800 mb-3">📋 Test Accounts</h3>
+            <div class="space-y-3 text-sm">
+                <!-- Account 1 - ENCRYPTED_PIN_BLOCK -->
+                <div class="bg-white p-3 rounded border border-blue-100">
+                    <p class="font-semibold text-gray-800">Account 1: John Doe (Encrypted PIN Block)</p>
+                    <div class="mt-2 space-y-1 text-gray-600">
+                        <p><span class="font-medium">PAN:</span> 4111111111111111</p>
+                        <p><span class="font-medium">Account #:</span> 1234567890</p>
+                        <p><span class="font-medium">PIN:</span> 1234</p>
+                        <p><span class="font-medium">Balance:</span> IDR 5,000,000.00</p>
+                        <p class="text-xs text-blue-600 mt-1">
+                            ℹ️ Uses ENCRYPTED_PIN_BLOCK verification (HSM decrypts PIN block)
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Account 2 - PVV -->
+                <div class="bg-white p-3 rounded border border-blue-100">
+                    <p class="font-semibold text-gray-800">Account 2: Jane Smith (PVV Method)</p>
+                    <div class="mt-2 space-y-1 text-gray-600">
+                        <p><span class="font-medium">PAN:</span> 4111111111111111</p>
+                        <p><span class="font-medium">Account #:</span> 0987654321</p>
+                        <p><span class="font-medium">PIN:</span> 1234</p>
+                        <p><span class="font-medium">PVV:</span> 0187</p>
+                        <p><span class="font-medium">Balance:</span> IDR 3,000,000.00</p>
+                        <p class="text-xs text-green-600 mt-1">
+                            ℹ️ Uses PVV (PIN Verification Value) method
+                        </p>
+                    </div>
+                </div>
+
+                <div class="pt-2 border-t border-blue-200">
+                    <p class="text-xs text-gray-500">
+                        💡 <strong>Tip:</strong> Both accounts use the same PAN but different account numbers.
+                        The PAN is used for PIN block encryption, while the account number determines which account to access.
+                        This demonstrates two PIN verification methods: Account 1 uses ENCRYPTED_PIN_BLOCK (HSM decrypts), Account 2 uses PVV (hash-based).
+                    </p>
+                </div>
+            </div>
+        </div>
+
         <form id="atmForm" class="space-y-4">
             <div>
                 <label class="block text-sm font-medium text-gray-700">Card Number (PAN)</label>

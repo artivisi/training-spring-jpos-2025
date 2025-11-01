@@ -285,6 +285,32 @@ Field 70: "301"  // Key change request
 ```
 
 This allows centralized key management where administrators can trigger key rotation from the server without manual intervention at each ATM.
+
+## Documentation
+
+Comprehensive documentation for key rotation is available in the server's `docs/` directory:
+
+### Key Rotation Documentation
+
+- **[Key Rotation Overview](../spring-jpos-atm-server/docs/KEY_ROTATION_OVERVIEW.md)** - High-level overview with mermaid diagrams comparing both terminal-initiated and server-initiated key rotation methods
+- **[Terminal-Initiated Key Rotation](../spring-jpos-atm-server/docs/KEY_ROTATION_TERMINAL_INITIATED.md)** - Detailed protocol specification for terminal-initiated key changes, including message formats, complete flow, implementation guide, and troubleshooting
+- **[Server-Initiated Key Rotation](../spring-jpos-atm-server/docs/KEY_ROTATION_SERVER_INITIATED.md)** - Remote key rotation triggering via admin API, notification protocol, and complete implementation guide
+- **[Key Rotation Testing Guide](../spring-jpos-atm-server/docs/KEY_ROTATION_TESTING.md)** - Comprehensive testing procedures including prerequisites, test cases, error scenarios, and automated testing
+- **[Key Change Quick Reference](../spring-jpos-atm-server/docs/KEY_CHANGE_QUICK_REFERENCE.md)** - Quick reference for field formats, operation codes, and common commands
+
+**Key Topics Covered:**
+- Complete ISO-8583 0800/0810 message specifications
+- Operation codes (01-07) and their meanings
+- Explicit confirmation mechanism
+- Key decryption and verification on terminal side
+- Unhandled message queue processing for server-initiated notifications
+- Key lifecycle management (PENDING → ACTIVE → EXPIRED)
+- Security considerations and best practices
+- Error handling and troubleshooting
+- End-to-end testing procedures
+
+## ISO 8583 Message Processing
+
 - **Message Processing**: All ISO 8583 messages are packed/unpacked using Base24 format
 
 **Example ISO 8583 Message Fields (BASE24):**

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <title>ATM Simulator - Welcome</title>
+</head>
+<body>
+    <!-- Override container width with responsive classes -->
+    <div layout:fragment="container-width" class="w-full max-w-full md:max-w-4xl lg:max-w-6xl mx-auto bg-white rounded-lg shadow-lg p-6 md:p-8">
+        <h1 layout:fragment="page-title" class="text-3xl md:text-4xl font-bold text-center mb-6 text-indigo-600">
+            🏧 ATM Simulator
+        </h1>
+
+        <div id="result" class="hidden mb-4 p-4 rounded"></div>
+
+        <div layout:fragment="content">
+            <!-- Hero Section -->
+            <div class="text-center mb-8">
+                <p class="text-lg md:text-xl text-gray-600">
+                    ISO-8583 Banking Transaction Simulator
+                </p>
+            </div>
+
+        <!-- About Section -->
+        <div class="bg-white shadow-md rounded-lg p-6 mb-6">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">About This Application</h2>
+            <p class="text-gray-600 mb-4">
+                This is an educational ATM simulator that demonstrates ISO-8583 banking transaction processing. 
+                It simulates real ATM operations including balance inquiries, withdrawals, and cryptographic key management.
+            </p>
+            <p class="text-gray-600 mb-4">
+                The simulator communicates with a backend server using the ISO-8583 standard protocol, which is 
+                widely used in the banking industry for electronic transactions.
+            </p>
+        </div>
+
+        <!-- Features Section -->
+        <div class="grid md:grid-cols-2 gap-6 mb-6">
+            <!-- ATM Transactions Card -->
+            <div class="bg-gradient-to-br from-blue-50 to-indigo-50 shadow-md rounded-lg p-6 hover:shadow-lg transition-shadow">
+                <div class="flex items-center mb-4">
+                    <span class="text-4xl mr-3">💳</span>
+                    <h3 class="text-xl font-semibold text-gray-800">ATM Transactions</h3>
+                </div>
+                <p class="text-gray-600 mb-4">
+                    Simulate ATM operations including balance inquiries and cash withdrawals. 
+                    Uses ISO-8583 messaging with PIN encryption and MAC verification.
+                </p>
+                <ul class="text-sm text-gray-600 mb-4 space-y-1">
+                    <li>✓ Balance Inquiry (MTI 0200)</li>
+                    <li>✓ Cash Withdrawal (MTI 0200)</li>
+                    <li>✓ AES-256 PIN Encryption</li>
+                    <li>✓ MAC Verification (AES-CMAC)</li>
+                </ul>
+                <a href="/atm" 
+                   class="block w-full bg-indigo-600 text-white text-center py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors">
+                    Open ATM Simulator
+                </a>
+            </div>
+
+            <!-- Key Management Card -->
+            <div class="bg-gradient-to-br from-green-50 to-emerald-50 shadow-md rounded-lg p-6 hover:shadow-lg transition-shadow">
+                <div class="flex items-center mb-4">
+                    <span class="text-4xl mr-3">🔐</span>
+                    <h3 class="text-xl font-semibold text-gray-800">Key Management</h3>
+                </div>
+                <p class="text-gray-600 mb-4">
+                    Manage cryptographic keys (TPK, TSK) with secure key rotation using ISO-8583 
+                    network management messages and HSM integration.
+                </p>
+                <ul class="text-sm text-gray-600 mb-4 space-y-1">
+                    <li>✓ TPK/TSK Key Rotation (MTI 0800/0810)</li>
+                    <li>✓ Explicit Confirmation Protocol</li>
+                    <li>✓ SHA-256 Checksum Verification</li>
+                    <li>✓ HSM Integration</li>
+                </ul>
+                <a href="/keys" 
+                   class="block w-full bg-green-600 text-white text-center py-2 px-4 rounded-md hover:bg-green-700 transition-colors">
+                    Open Key Management
+                </a>
+            </div>
+        </div>
+
+        <!-- Technical Details Section -->
+        <div class="bg-gray-50 shadow-md rounded-lg p-6 mb-6">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Technical Features</h2>
+            <div class="grid md:grid-cols-3 gap-4">
+                <div>
+                    <h4 class="font-semibold text-gray-700 mb-2">🔒 Security</h4>
+                    <ul class="text-sm text-gray-600 space-y-1">
+                        <li>• AES-256 Encryption</li>
+                        <li>• PIN Block Encryption</li>
+                        <li>• MAC Generation/Verification</li>
+                        <li>• Key Derivation (PBKDF2)</li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-gray-700 mb-2">📡 Protocol</h4>
+                    <ul class="text-sm text-gray-600 space-y-1">
+                        <li>• ISO-8583 Standard</li>
+                        <li>• BASE24 Packager</li>
+                        <li>• jPOS Framework</li>
+                        <li>• QMUX Connection</li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold text-gray-700 mb-2">🏗️ Architecture</h4>
+                    <ul class="text-sm text-gray-600 space-y-1">
+                        <li>• Spring Boot Application</li>
+                        <li>• PostgreSQL Database</li>
+                        <li>• Thymeleaf Templates</li>
+                        <li>• RESTful API</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Disclaimer Section -->
+        <div class="bg-yellow-50 border-l-4 border-yellow-400 shadow-md rounded-lg p-6">
+            <h2 class="text-xl font-semibold text-yellow-800 mb-3">
+                ⚠️ Important Disclaimer
+            </h2>
+            <div class="text-sm text-yellow-700 space-y-2">
+                <p>
+                    <strong>Educational Purpose Only:</strong> This application is designed for training 
+                    and educational purposes only. It simulates banking operations but should NOT be used 
+                    in production environments.
+                </p>
+                <p>
+                    <strong>Test Data:</strong> All test cards, PINs, and accounts are fictional. 
+                    No real financial transactions are processed.
+                </p>
+                <p>
+                    <strong>Security:</strong> While the application implements industry-standard security 
+                    protocols, it uses test keys and simplified workflows not suitable for production banking systems.
+                </p>
+                <p>
+                    <strong>Compliance:</strong> This simulator is for learning ISO-8583 protocol and banking 
+                    transaction flows. Consult security and compliance experts before implementing real banking systems.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

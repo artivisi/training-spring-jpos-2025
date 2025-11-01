@@ -6,9 +6,26 @@
     <title>Key Management</title>
 </head>
 <body>
-    <h1 layout:fragment="page-title" class="text-2xl font-bold text-center mb-6">Key Management</h1>
+    <h1 layout:fragment="page-title" class="text-2xl font-bold text-center mb-6">
+        <a href="/" class="text-indigo-600 hover:text-indigo-800 mr-2">←</a>
+        Key Management
+    </h1>
 
     <div layout:fragment="content">
+        <!-- Progress Indicator -->
+        <div id="keyProgressIndicator" class="hidden mb-4 p-4 rounded bg-blue-50 border border-blue-200">
+            <div class="flex items-center">
+                <svg class="animate-spin h-5 w-5 mr-3 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-blue-700 font-medium" id="keyProgressText">Processing key change...</span>
+            </div>
+        </div>
+
+        <!-- Result Display -->
+        <div id="result" class="hidden mb-4"></div>
+
         <form id="keyForm" class="space-y-4">
             <div>
                 <label class="block text-sm font-medium text-gray-700">Key Type</label>
@@ -37,6 +54,19 @@
 
             const keyType = document.getElementById('keyType').value;
             const resultDiv = document.getElementById('result');
+            const progressDiv = document.getElementById('keyProgressIndicator');
+            const progressText = document.getElementById('keyProgressText');
+            const submitButton = e.target.querySelector('button[type="submit"]');
+
+            // Hide previous result and show progress
+            resultDiv.classList.add('hidden');
+            progressDiv.classList.remove('hidden');
+            submitButton.disabled = true;
+            submitButton.classList.add('opacity-50', 'cursor-not-allowed');
+
+            progressText.textContent = `Initiating ${keyType} key rotation...`;
+
+            const startTime = new Date();
 
             try {
                 const response = await fetch('/keys/change', {
@@ -48,24 +78,79 @@
                 });
 
                 const data = await response.json();
+                const endTime = new Date();
+                const duration = ((endTime - startTime) / 1000).toFixed(2);
+                const timestamp = endTime.toLocaleTimeString();
+
+                progressDiv.classList.add('hidden');
 
                 if (data.success) {
-                    resultDiv.className = 'mb-4 p-4 rounded bg-green-100 text-green-700';
+                    resultDiv.className = 'mb-4 p-4 rounded-lg bg-green-100 border-2 border-green-400 text-green-800 animate-fade-in';
                     resultDiv.innerHTML = `
-                        <p class="font-bold">Key Changed Successfully!</p>
-                        <p>Key Type: ${data.keyType}</p>
-                        <p>Check Value: ${data.checkValue}</p>
+                        <div class="flex items-start mb-2">
+                            <svg class="h-6 w-6 text-green-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <div class="flex-1">
+                                <p class="font-bold text-lg">Key Changed Successfully!</p>
+                                <p class="mt-2"><span class="font-medium">Key Type:</span> ${data.keyType}</p>
+                                <p><span class="font-medium">Key ID:</span> ${data.keyId}</p>
+                                <p><span class="font-medium">Check Value:</span> ${data.checkValue}</p>
+                            </div>
+                        </div>
+                        <div class="mt-3 pt-3 border-t border-green-300 text-sm">
+                            <p><span class="font-medium">Time:</span> ${timestamp}</p>
+                            <p><span class="font-medium">Duration:</span> ${duration}s</p>
+                        </div>
                     `;
                 } else {
-                    resultDiv.className = 'mb-4 p-4 rounded bg-red-100 text-red-700';
-                    resultDiv.textContent = 'Key change failed';
+                    resultDiv.className = 'mb-4 p-4 rounded-lg bg-red-100 border-2 border-red-400 text-red-800 animate-fade-in';
+                    resultDiv.innerHTML = `
+                        <div class="flex items-start mb-2">
+                            <svg class="h-6 w-6 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <div class="flex-1">
+                                <p class="font-bold text-lg">Key Change Failed</p>
+                                <p class="mt-1">${data.message}</p>
+                            </div>
+                        </div>
+                        <div class="mt-3 pt-3 border-t border-red-300 text-sm">
+                            <p><span class="font-medium">Time:</span> ${timestamp}</p>
+                            <p><span class="font-medium">Duration:</span> ${duration}s</p>
+                        </div>
+                    `;
                 }
 
                 resultDiv.classList.remove('hidden');
+                resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
             } catch (error) {
-                resultDiv.className = 'mb-4 p-4 rounded bg-red-100 text-red-700';
-                resultDiv.textContent = 'Error: ' + error.message;
+                const endTime = new Date();
+                const duration = ((endTime - startTime) / 1000).toFixed(2);
+                const timestamp = endTime.toLocaleTimeString();
+
+                progressDiv.classList.add('hidden');
+                resultDiv.className = 'mb-4 p-4 rounded-lg bg-red-100 border-2 border-red-400 text-red-800 animate-fade-in';
+                resultDiv.innerHTML = `
+                    <div class="flex items-start mb-2">
+                        <svg class="h-6 w-6 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <div class="flex-1">
+                            <p class="font-bold text-lg">Connection Error</p>
+                            <p class="mt-1">${error.message}</p>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-red-300 text-sm">
+                        <p><span class="font-medium">Time:</span> ${timestamp}</p>
+                        <p><span class="font-medium">Duration:</span> ${duration}s</p>
+                    </div>
+                `;
                 resultDiv.classList.remove('hidden');
+            } finally {
+                submitButton.disabled = false;
+                submitButton.classList.remove('opacity-50', 'cursor-not-allowed');
             }
         });
     </script>
