@@ -5,7 +5,6 @@ import java.util.List;
 
 import org.jpos.iso.ISOException;
 import org.jpos.iso.ISOMsg;
-import org.jpos.iso.ISOUtil;
 import org.jpos.transaction.Context;
 import org.jpos.transaction.TransactionParticipant;
 
@@ -13,7 +12,6 @@ import com.example.atm.config.HsmProperties;
 import com.example.atm.entity.CryptoKey;
 import com.example.atm.jpos.SpringBeanFactory;
 import com.example.atm.service.CryptoKeyService;
-import com.example.atm.service.KeyRotationService;
 import com.example.atm.util.AesCmacUtil;
 import com.example.atm.util.CryptoUtil;
 
@@ -34,10 +32,6 @@ public class MacVerificationParticipant implements TransactionParticipant {
 
     private CryptoKeyService getCryptoKeyService() {
         return SpringBeanFactory.getBean(CryptoKeyService.class);
-    }
-
-    private KeyRotationService getKeyRotationService() {
-        return SpringBeanFactory.getBean(KeyRotationService.class);
     }
 
     /**
@@ -80,22 +74,6 @@ public class MacVerificationParticipant implements TransactionParticipant {
             log.error("Error extracting terminal ID from message: {}", e.getMessage());
             return "TRM-ISS001-ATM-001";
         }
-    }
-
-    /**
-     * Get TSK master key bytes from database.
-     */
-    private byte[] getTskMasterKeyBytes(String terminalId) {
-        CryptoKey tskKey = getCryptoKeyService().getActiveKey(terminalId, CryptoKey.KeyType.TSK);
-        return CryptoUtil.hexToBytes(tskKey.getKeyValue());
-    }
-
-    /**
-     * Get bank UUID from database.
-     */
-    private String getBankUuid(String terminalId) {
-        CryptoKey tskKey = getCryptoKeyService().getActiveKey(terminalId, CryptoKey.KeyType.TSK);
-        return tskKey.getBankUuid();
     }
 
     /**

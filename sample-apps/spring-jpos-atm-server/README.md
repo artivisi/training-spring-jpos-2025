@@ -95,6 +95,31 @@ curl http://localhost:8080/api/admin/key-rotation/status/TRM-ISS001-ATM-001
 
 This allows centralized key management without manual intervention at each terminal.
 
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+### Key Rotation Documentation
+
+- **[Key Rotation Overview](docs/KEY_ROTATION_OVERVIEW.md)** - High-level overview with mermaid diagrams comparing both terminal-initiated and server-initiated key rotation methods
+- **[Terminal-Initiated Key Rotation](docs/KEY_ROTATION_TERMINAL_INITIATED.md)** - Detailed protocol specification for terminal-initiated key changes, including message formats, complete flow, implementation guide, and troubleshooting
+- **[Server-Initiated Key Rotation](docs/KEY_ROTATION_SERVER_INITIATED.md)** - Remote key rotation triggering via admin API, notification protocol, and complete implementation guide
+- **[Key Rotation Testing Guide](docs/KEY_ROTATION_TESTING.md)** - Comprehensive testing procedures including prerequisites, test cases, error scenarios, and automated testing
+
+### Quick Reference
+
+- **[Key Change Quick Reference](docs/KEY_CHANGE_QUICK_REFERENCE.md)** - Quick reference for field formats, operation codes, and common commands
+
+**Key Topics Covered:**
+- Complete ISO-8583 0800/0810 message specifications
+- Operation codes (01-07) and their meanings
+- Explicit confirmation mechanism
+- HSM integration patterns
+- Key lifecycle management (PENDING → ACTIVE → EXPIRED)
+- Security considerations and best practices
+- Error handling and troubleshooting
+- End-to-end testing procedures
+
 ## jPOS ISO-8583 Server
 
 ### Configuration
