@@ -1,0 +1,98 @@
+{
+  "macOperationsTests": {
+    "description": "MAC generation and verification test scenarios for message integrity",
+    "scenarios": [
+      {
+        "name": "MAC Generation with AES-CMAC",
+        "description": "Generate MAC for ISO-8583 message using AES-CMAC algorithm",
+        "method": "POST",
+        "endpoint": "/api/hsm/mac/generate",
+        "request": {
+          "message": "0800822000000000000004000000000000000000001234567890123456",
+          "keyId": "TSK-TRM-ISS001-ATM-001",
+          "algorithm": "AES-CMAC"
+        },
+        "expectedResult": {
+          "macValue": "A1B2C3D4E5F6G7H8",
+          "algorithm": "AES-CMAC",
+          "messageLength": 56
+        },
+        "curlCommand": "curl -X POST http://localhost:8080/api/hsm/mac/generate -H 'Content-Type: application/json' -d '{\"message\":\"0800822000000000000004000000000000000000001234567890123456\",\"keyId\":\"TSK-TRM-ISS001-ATM-001\",\"algorithm\":\"AES-CMAC\"}'"
+      },
+      {
+        "name": "MAC Verification - Valid",
+        "description": "Verify MAC to ensure message integrity",
+        "method": "POST",
+        "endpoint": "/api/hsm/mac/verify",
+        "request": {
+          "message": "0800822000000000000004000000000000000000001234567890123456",
+          "mac": "A1B2C3D4E5F6G7H8",
+          "keyId": "TSK-TRM-ISS001-ATM-001",
+          "algorithm": "AES-CMAC"
+        },
+        "expectedResult": {
+          "valid": true,
+          "message": "MAC is valid"
+        },
+        "curlCommand": "curl -X POST http://localhost:8080/api/hsm/mac/verify -H 'Content-Type: application/json' -d '{\"message\":\"0800822000000000000004000000000000000000001234567890123456\",\"mac\":\"A1B2C3D4E5F6G7H8\",\"keyId\":\"TSK-TRM-ISS001-ATM-001\",\"algorithm\":\"AES-CMAC\"}'"
+      },
+      {
+        "name": "MAC Verification - Invalid (Tampered Message)",
+        "description": "Detect tampered message through MAC mismatch",
+        "method": "POST",
+        "endpoint": "/api/hsm/mac/verify",
+        "request": {
+          "message": "0800822000000000000004000000000000000000001234567890123456",
+          "mac": "INVALID_MAC_VALUE",
+          "keyId": "TSK-TRM-ISS001-ATM-001",
+          "algorithm": "AES-CMAC"
+        },
+        "expectedResult": {
+          "valid": false,
+          "message": "MAC verification failed",
+          "securityAlert": true
+        }
+      },
+      {
+        "name": "MAC Generation - Balance Inquiry Message",
+        "description": "Generate MAC for actual balance inquiry ISO-8583 message",
+        "method": "POST",
+        "endpoint": "/api/hsm/mac/generate",
+        "request": {
+          "message": "0200B220000000100000000000001000000000000001234567890123456000000001270000912341025",
+          "keyId": "TSK-TRM-ISS001-ATM-001",
+          "algorithm": "AES-CMAC"
+        },
+        "iso8583Fields": {
+          "mti": "0200",
+          "de2": "1234567890",
+          "de3": "310000",
+          "de4": "000000000000",
+          "de11": "000001",
+          "de12": "270000",
+          "de13": "1025"
+        }
+      },
+      {
+        "name": "MAC Generation - Withdrawal Message",
+        "description": "Generate MAC for withdrawal ISO-8583 message",
+        "method": "POST",
+        "endpoint": "/api/hsm/mac/generate",
+        "request": {
+          "message": "0200B220000000100000000000001000000000000001234567890123456000000050000000000912341025",
+          "keyId": "TSK-TRM-ISS001-ATM-001",
+          "algorithm": "AES-CMAC"
+        },
+        "iso8583Fields": {
+          "mti": "0200",
+          "de2": "1234567890",
+          "de3": "010000",
+          "de4": "000000500000",
+          "de11": "000001",
+          "de12": "270000",
+          "de13": "1025"
+        }
+      }
+    ]
+  }
+}

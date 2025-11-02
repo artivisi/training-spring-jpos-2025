@@ -1,0 +1,79 @@
+{
+  "pinOperationsTests": {
+    "description": "PIN encryption, decryption, and verification test scenarios",
+    "scenarios": [
+      {
+        "name": "PIN Verification with PVV (Recommended Method)",
+        "description": "Verify PIN using PIN Verification Value - more secure, stores hash only",
+        "method": "POST",
+        "endpoint": "/api/hsm/pin/verify-with-pvv",
+        "request": {
+          "pinBlockUnderTPK": "1234567890ABCDEF1234567890ABCDEF",
+          "storedPVV": "0187",
+          "terminalId": "TRM-ISS001-ATM-001",
+          "pan": "0987654321",
+          "pinFormat": "ISO-0"
+        },
+        "expectedResult": {
+          "valid": true,
+          "message": "PIN verified successfully using PVV",
+          "method": "PVV (PIN Verification Value)"
+        },
+        "curlCommand": "curl -X POST http://localhost:8080/api/hsm/pin/verify-with-pvv -H 'Content-Type: application/json' -d '{\"pinBlockUnderTPK\":\"1234567890ABCDEF1234567890ABCDEF\",\"storedPVV\":\"0187\",\"terminalId\":\"TRM-ISS001-ATM-001\",\"pan\":\"0987654321\",\"pinFormat\":\"ISO-0\"}'"
+      },
+      {
+        "name": "PIN Verification - Incorrect PIN",
+        "description": "Test PIN verification failure",
+        "method": "POST",
+        "endpoint": "/api/hsm/pin/verify-with-pvv",
+        "request": {
+          "pinBlockUnderTPK": "WRONG_PIN_BLOCK_VALUE_HERE",
+          "storedPVV": "0187",
+          "terminalId": "TRM-ISS001-ATM-001",
+          "pan": "0987654321",
+          "pinFormat": "ISO-0"
+        },
+        "expectedResult": {
+          "valid": false,
+          "message": "PIN verification failed"
+        }
+      },
+      {
+        "name": "PIN Encryption for Terminal",
+        "description": "Encrypt PIN block under TPK for transmission",
+        "method": "POST",
+        "endpoint": "/api/hsm/pin/encrypt",
+        "request": {
+          "pin": "1234",
+          "accountNumber": "4111111111111111",
+          "format": "ISO-0",
+          "keyId": "TPK-TRM-ISS001-ATM-001"
+        },
+        "expectedResult": {
+          "encryptedPinBlock": "8F4A2E1D9C7B5A3E6F8D2C4B7A9E5D3C",
+          "format": "ISO-0",
+          "pvv": "1234"
+        },
+        "curlCommand": "curl -X POST http://localhost:8080/api/hsm/pin/encrypt -H 'Content-Type: application/json' -d '{\"pin\":\"1234\",\"accountNumber\":\"4111111111111111\",\"format\":\"ISO-0\",\"keyId\":\"TPK-TRM-ISS001-ATM-001\"}'"
+      },
+      {
+        "name": "PIN Block Generation (ISO-0 Format)",
+        "description": "Generate PIN block in ISO 9564-1 Format 0",
+        "method": "POST",
+        "endpoint": "/api/hsm/pin/generate-pinblock",
+        "request": {
+          "pan": "4111111111111111",
+          "pin": "1234",
+          "format": "ISO-0"
+        },
+        "expectedResult": {
+          "encryptedPinBlock": "A1B2C3D4E5F6789012345678901234AB",
+          "format": "ISO-0",
+          "pvv": "1234",
+          "keyId": "LMK-SAMPLE-001",
+          "keyType": "LMK"
+        }
+      }
+    ]
+  }
+}

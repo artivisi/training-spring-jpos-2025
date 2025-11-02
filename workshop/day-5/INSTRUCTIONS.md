@@ -1,15 +1,16 @@
-# Hari 5 – Ketahanan Koneksi & Kesiapan Produksi
+# Hari 5 – Connection Resiliency & Production Readiness
 
 ## Tujuan
-- Implementasi mekanisme retry dengan exponential backoff
-- Store-and-forward pattern untuk skenario offline
-- Monitoring produksi dengan Grafana & Prometheus
-- Pengujian end-to-end untuk validasi sistem lengkap
+- Persistent connection dengan heartbeat & automatic re-sign-on
+- Server-initiated key rotation via admin REST API
+- Key lifecycle management (PENDING → ACTIVE → EXPIRED)
+- End-to-end testing seluruh sistem (transactions & key rotation)
+- Monitoring dengan Prometheus & Grafana
 - Best practices untuk deployment, security, dan performance
 
-## 1. Mekanisme Retry
+## 1. Persistent Connection & Automatic Re-Sign-On
 
-### 1.1 Arsitektur Strategi Retry
+### 1.1 Connection Lifecycle
 ```mermaid
 graph TB
     subgraph "Strategi Retry"
@@ -216,11 +217,72 @@ graph TB
     style L fill:#ff6f00
 ```
 
-### 4.2 Konfigurasi Prometheus
+### 4.2 Konfigurasi Prometheus dengan jPOS 3
+
+**jPOS 3 Built-in Prometheus Support:**
+
+jPOS 3 menyediakan embedded Prometheus endpoint server yang dapat digunakan out of the box. jPOS 3 menggunakan **Micrometer** untuk instrumentasi metrics yang terintegrasi dengan Prometheus dan OpenTelemetry.
+
+**Konfigurasi jPOS Q2 dengan Metrics:**
+```bash
+# Start Q2 with Prometheus metrics endpoint
+java -jar jpos.jar --metrics-port=18583 --metrics-path=/metrics
+
+# Or using q2 script
+bin/q2 --metrics-port=18583 --metrics-path=/metrics
+```
+
+**Konfigurasi Prometheus:**
 Konfigurasi Prometheus tersedia di: `production/prometheus.yml`
 
+File konfigurasi akan men-scrape metrics dari:
+- **jPOS metrics endpoint**: `http://localhost:18583/metrics`
+- **Spring Boot Actuator** (Bank Server): `http://localhost:9090/actuator/prometheus`
+- **HSM Simulator**: `http://localhost:8080/actuator/prometheus`
+
+**Metrics jPOS yang tersedia:**
+- ISO messages processed (total, success, failure)
+- Transaction throughput (TPS - Transactions Per Second)
+- MUX activity dan latency
+- Active sessions dan active connections
+- TransactionManager participants metrics
+- Channel dan Server statistics
+- JVM metrics (memory, GC, threads, class loading)
+
 ### 4.3 Konfigurasi Dashboard Grafana
+
+**jPOS-Specific Metrics Dashboard:**
+
+Grafana dashboard dikonfigurasi dengan dua kategori metrics:
+
+1. **jPOS Application Metrics:**
+   - ISO-8583 message processing rate
+   - Transaction throughput (TPS)
+   - MUX performance dan active sessions
+   - Channel connections (active/idle)
+   - TransactionManager response times (p50, p95, p99)
+   - HSM operations (PIN verification, MAC generation)
+
+2. **JVM Metrics:**
+   - Heap memory usage dan GC statistics
+   - Thread counts dan states
+   - Class loading metrics
+   - CPU usage
+
 Konfigurasi dashboard Grafana tersedia di: `production/grafana-dashboard.json`
+
+**Docker Compose Monitoring Stack:**
+Konfigurasi lengkap tersedia di: `production/docker-compose.monitoring.yml`
+
+Stack mencakup:
+- **Prometheus** (port 9090) - Metrics collection
+- **Grafana** (port 3000) - Visualization
+- **Preconfigured dashboards** untuk jPOS dan Spring Boot
+
+**Akses Monitoring:**
+- Prometheus UI: `http://localhost:9090`
+- Grafana: `http://localhost:3000` (admin/admin)
+- jPOS Metrics Endpoint: `http://localhost:18583/metrics`
 
 ### 4.4 Metrik Kunci untuk Monitoring
 **Application Metrics:**
@@ -427,24 +489,44 @@ graph TB
 - **Regular security** assessments
 - **Continuous improvement** process
 
-## 11. Langkah Selanjutnya
+## 11. Next Steps
 
 Setelah berhasil menyelesaikan Day 5:
-1. Pola ketahanan lengkap diimplementasikan
-2. Monitoring produksi dikonfigurasi
-3. Security hardening selesai
-4. Load testing tervalidasi
-5. Prosedur operasional didokumentasikan
-6. Sistem siap untuk deployment produksi
-7. Review perjalanan training lengkap dan pelajaran yang dipelajari
+1. Persistent connection dengan heartbeat implemented
+2. Automatic re-sign-on berfungsi
+3. Server-initiated key rotation via REST API berfungsi
+4. Key lifecycle management (PENDING → ACTIVE → EXPIRED) implemented
+5. Automatic channel deregistration on disconnect
+6. Transaction manager refactoring dengan group-based routing
+7. Monitoring dan logging comprehensive
+8. Sistem ATM production-ready
 
-## 12. Deliverables Proyek Akhir
+## 12. Final Project Deliverables
 
-**Sistem produksi siap lengkap dengan:**
-- ✅ Semua 5 hari implementasi
-- ✅ Dokumentasi dan runbooks lengkap
-- ✅ Monitoring dan alerting
-- ✅ Security hardening
-- ✅ Validasi load testing
-- ✅ Otomasi deployment
-- ✅ Prosedur operasional
+**Sistem ATM production-ready lengkap dengan:**
+
+**Day 1-3 Core Features:**
+- ✅ Bank Server dengan jPOS Q2 Server (port 22222)
+- ✅ ATM Simulator dengan Web UI (port 7070)
+- ✅ PostgreSQL database untuk accounts & transactions
+- ✅ Balance Inquiry (Processing Code 310000)
+- ✅ Cash Withdrawal (Processing Code 010000)
+- ✅ Transaction Participants dengan Spring Boot integration
+- ✅ Automatic sign-on/sign-off
+
+**Day 4 Security Features:**
+- ✅ HSM simulator (port 8080)
+- ✅ AES-128 PIN encryption (field 123)
+- ✅ AES-CMAC message integrity (field 64)
+- ✅ PIN verification
+- ✅ Terminal-initiated key rotation (TPK/TSK)
+- ✅ Crypto keys database management
+
+**Day 5 Production Features:**
+- ✅ Persistent connection dengan heartbeat
+- ✅ Automatic re-sign-on capability
+- ✅ Server-initiated key rotation via admin API
+- ✅ Channel deregistration on disconnect
+- ✅ Key lifecycle management
+- ✅ Comprehensive logging
+- ✅ Production-ready configuration

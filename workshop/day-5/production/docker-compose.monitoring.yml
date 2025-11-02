@@ -1,0 +1,163 @@
+# Docker Compose for ATM System Monitoring Stack
+# Based on jPOS 3 official Prometheus integration
+# Includes: Prometheus, Grafana, Alertmanager, Node Exporter, Postgres Exporter
+
+version: '3.8'
+
+services:
+  # Prometheus - Metrics Collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: atm-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - atm-monitoring
+    depends_on:
+      - node-exporter
+      - postgres-exporter
+
+  # Grafana - Metrics Visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: atm-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasource.yml:ro
+      - ./grafana-dashboard.json:/var/lib/grafana/dashboards/atm-dashboard.json:ro
+      - ./grafana-dashboard-provider.yml:/etc/grafana/provisioning/dashboards/dashboard-provider.yml:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      - atm-monitoring
+    depends_on:
+      - prometheus
+
+  # Alertmanager - Alert Management
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: atm-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    networks:
+      - atm-monitoring
+
+  # Node Exporter - System Metrics
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: atm-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - atm-monitoring
+
+  # Postgres Exporter - Database Metrics
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: atm-postgres-exporter
+    restart: unless-stopped
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/atm_system?sslmode=disable"
+    networks:
+      - atm-monitoring
+    depends_on:
+      - postgres
+
+  # PostgreSQL Database (if not already running)
+  postgres:
+    image: postgres:15-alpine
+    container_name: atm-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: atm_system
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - atm-monitoring
+
+networks:
+  atm-monitoring:
+    driver: bridge
+    name: atm-monitoring
+
+volumes:
+  prometheus-data:
+    name: atm-prometheus-data
+  grafana-data:
+    name: atm-grafana-data
+  alertmanager-data:
+    name: atm-alertmanager-data
+  postgres-data:
+    name: atm-postgres-data
+
+# Usage Instructions:
+#
+# 1. Start monitoring stack:
+#    docker-compose -f docker-compose.monitoring.yml up -d
+#
+# 2. Access services:
+#    - Prometheus: http://localhost:9090
+#    - Grafana: http://localhost:3000 (admin/admin)
+#    - Alertmanager: http://localhost:9093
+#    - Node Exporter: http://localhost:9100/metrics
+#    - Postgres Exporter: http://localhost:9187/metrics
+#
+# 3. Configure jPOS Q2 Server with metrics:
+#    java -jar jpos.jar --metrics-port=18583 --metrics-path=/metrics
+#
+# 4. Ensure Spring Boot applications expose Actuator metrics:
+#    management.endpoints.web.exposure.include=health,info,metrics,prometheus
+#    management.metrics.export.prometheus.enabled=true
+#
+# 5. View logs:
+#    docker-compose -f docker-compose.monitoring.yml logs -f [service-name]
+#
+# 6. Stop monitoring stack:
+#    docker-compose -f docker-compose.monitoring.yml down
+#
+# 7. Stop and remove volumes:
+#    docker-compose -f docker-compose.monitoring.yml down -v

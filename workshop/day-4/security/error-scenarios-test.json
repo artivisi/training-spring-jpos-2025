@@ -1,0 +1,172 @@
+{
+  "errorScenariosTests": {
+    "description": "Error handling and security violation test scenarios",
+    "scenarios": [
+      {
+        "name": "MAC Verification Failure - Tampered Message",
+        "description": "Detect tampered message through MAC mismatch (CRITICAL SECURITY EVENT)",
+        "severity": "CRITICAL",
+        "method": "POST",
+        "endpoint": "/api/hsm/mac/verify",
+        "request": {
+          "message": "0800822000000000000004000000000000000000001234567890123456",
+          "mac": "INVALID_MAC_VALUE",
+          "keyId": "TSK-TRM-ISS001-ATM-001",
+          "algorithm": "AES-CMAC"
+        },
+        "expectedResult": {
+          "valid": false,
+          "message": "MAC verification failed",
+          "securityAlert": true
+        },
+        "expectedActions": [
+          "Log critical security event",
+          "Reject transaction immediately",
+          "Alert security team",
+          "Possible man-in-the-middle attack"
+        ]
+      },
+      {
+        "name": "Expired Key Usage Attempt",
+        "description": "Attempt to use expired cryptographic key",
+        "severity": "HIGH",
+        "request": {
+          "keyId": "TPK-TRM-ISS001-ATM-001-EXPIRED",
+          "operation": "ENCRYPT",
+          "keyStatus": "EXPIRED"
+        },
+        "expectedResult": {
+          "status": "ERROR",
+          "errorCode": "KEY_EXPIRED",
+          "message": "Key has expired",
+          "httpStatus": 400
+        }
+      },
+      {
+        "name": "Invalid PIN Format",
+        "description": "Test error handling for malformed PIN block",
+        "severity": "MEDIUM",
+        "method": "POST",
+        "endpoint": "/api/hsm/pin/verify-with-pvv",
+        "request": {
+          "pinBlockUnderTPK": "INVALID_FORMAT",
+          "storedPVV": "0187",
+          "terminalId": "TRM-ISS001-ATM-001",
+          "pan": "1234567890",
+          "pinFormat": "INVALID"
+        },
+        "expectedResult": {
+          "status": "ERROR",
+          "errorCode": "INVALID_PIN_FORMAT",
+          "message": "Invalid PIN block format",
+          "httpStatus": 400
+        }
+      },
+      {
+        "name": "Missing Required Field - PAN",
+        "description": "Test validation for missing PAN in request",
+        "severity": "MEDIUM",
+        "method": "POST",
+        "endpoint": "/api/hsm/pin/verify-with-pvv",
+        "request": {
+          "pinBlockUnderTPK": "1234567890ABCDEF",
+          "storedPVV": "0187",
+          "terminalId": "TRM-ISS001-ATM-001"
+        },
+        "expectedResult": {
+          "status": "ERROR",
+          "errorCode": "MISSING_REQUIRED_FIELD",
+          "message": "PAN is required",
+          "httpStatus": 400
+        }
+      },
+      {
+        "name": "Key Not Found",
+        "description": "Reference to non-existent cryptographic key",
+        "severity": "HIGH",
+        "method": "POST",
+        "endpoint": "/api/hsm/mac/generate",
+        "request": {
+          "message": "0800822000000000000004000000000000000000001234567890123456",
+          "keyId": "NON_EXISTENT_KEY",
+          "algorithm": "AES-CMAC"
+        },
+        "expectedResult": {
+          "status": "ERROR",
+          "errorCode": "KEY_NOT_FOUND",
+          "message": "Cryptographic key not found",
+          "httpStatus": 404
+        }
+      },
+      {
+        "name": "Database Connection Failure",
+        "description": "Simulate database unavailability",
+        "severity": "CRITICAL",
+        "simulationMethod": "Stop PostgreSQL or disconnect network",
+        "expectedResult": {
+          "responseCode": "96",
+          "message": "System error",
+          "iso8583Response": {
+            "de39": "96"
+          },
+          "logMessage": "Database connection failed"
+        }
+      },
+      {
+        "name": "HSM Unavailable",
+        "description": "HSM simulator is down or unreachable",
+        "severity": "CRITICAL",
+        "simulationMethod": "Stop HSM simulator on port 8080",
+        "expectedResult": {
+          "responseCode": "96",
+          "message": "System error - HSM unavailable",
+          "retryStrategy": "Exponential backoff",
+          "maxRetries": 3
+        }
+      },
+      {
+        "name": "Concurrent Transaction Conflict",
+        "description": "Optimistic locking failure due to concurrent updates",
+        "severity": "MEDIUM",
+        "scenario": "Two simultaneous withdrawals from same account",
+        "expectedResult": {
+          "firstTransaction": "SUCCESS",
+          "secondTransaction": "RETRY_OR_FAIL",
+          "errorCode": "OPTIMISTIC_LOCK_EXCEPTION",
+          "message": "Account was modified by another transaction"
+        }
+      },
+      {
+        "name": "Invalid ISO-8583 Message Format",
+        "description": "Malformed ISO-8583 message received",
+        "severity": "HIGH",
+        "request": {
+          "message": "INVALID_MTI_OR_BITMAP"
+        },
+        "expectedResult": {
+          "responseCode": "12",
+          "message": "Invalid transaction",
+          "iso8583Response": {
+            "de39": "12"
+          }
+        }
+      },
+      {
+        "name": "Replay Attack Detection",
+        "description": "Detect duplicate STAN (System Trace Audit Number)",
+        "severity": "CRITICAL",
+        "scenario": "Same message sent twice with identical STAN",
+        "request": {
+          "de11": "000001",
+          "sentTimes": 2
+        },
+        "expectedResult": {
+          "firstAttempt": "SUCCESS",
+          "secondAttempt": "REJECTED",
+          "errorCode": "DUPLICATE_STAN",
+          "securityAlert": true
+        }
+      }
+    ]
+  }
+}

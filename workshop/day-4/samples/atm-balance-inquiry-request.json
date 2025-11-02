@@ -1,0 +1,8 @@
+{
+  "pan": "1234567890",
+  "pin": "1234",
+  "transactionType": "BALANCE_INQUIRY",
+  "terminalId": "TRM-ISS001-ATM-001",
+  "institutionId": "48a9e84c-ff57-4483-bf83-b255f34a6466",
+  "description": "Balance inquiry for account 1234567890"
+}

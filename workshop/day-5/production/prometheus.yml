@@ -1,9 +1,11 @@
-# Prometheus Configuration for Payment System Monitoring
+# Prometheus Configuration for ATM System Monitoring
+# Based on jPOS 3 official Prometheus integration
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    monitor: 'payment-system-monitor'
+    monitor: 'atm-system-monitor'
+    environment: 'production'
 
 rule_files:
   - "alert_rules.yml"
@@ -15,81 +17,134 @@ alerting:
           - alertmanager:9093
 
 scrape_configs:
-  # Acquirer Service Metrics
-  - job_name: 'acquirer-service'
+  # jPOS Q2 Server Metrics (jPOS 3 built-in Prometheus endpoint)
+  # Uses Micrometer instrumentation for channels, servers, MUX, TransactionManager
+  - job_name: 'jpos-q2-server'
     static_configs:
-      - targets: ['acquirer-service:8080']
+      - targets: ['bank-server:18583']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'jpos-q2-server'
+
+  # Bank Server (Spring Boot) - ISO-8583 Transaction Processing
+  - job_name: 'bank-server'
+    static_configs:
+      - targets: ['bank-server:9090']
     metrics_path: '/actuator/prometheus'
     scrape_interval: 10s
     scrape_timeout: 5s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: 'bank-server'
 
-  # Gateway Service Metrics
-  - job_name: 'gateway-service'
+  # HSM Simulator - Cryptographic Operations (PIN, MAC, Key Rotation)
+  - job_name: 'hsm-simulator'
     static_configs:
-      - targets: ['gateway-service:8081']
+      - targets: ['hsm-simulator:8080']
     metrics_path: '/actuator/prometheus'
     scrape_interval: 10s
     scrape_timeout: 5s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: 'hsm-simulator'
 
-  # Billing Service Metrics
-  - job_name: 'billing-service'
+  # ATM Simulator (if available)
+  - job_name: 'atm-simulator'
     static_configs:
-      - targets: ['billing-service:8082']
+      - targets: ['atm-simulator:7070']
     metrics_path: '/actuator/prometheus'
-    scrape_interval: 10s
+    scrape_interval: 15s
     scrape_timeout: 5s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: 'atm-simulator'
 
-  # HSM Service Metrics
-  - job_name: 'hsm-service'
-    static_configs:
-      - targets: ['hsm-service:8083']
-    metrics_path: '/actuator/prometheus'
-    scrape_interval: 10s
-    scrape_timeout: 5s
-
-  # PostgreSQL Database Metrics
+  # PostgreSQL Database Metrics (requires postgres_exporter)
   - job_name: 'postgres'
     static_configs:
       - targets: ['postgres-exporter:9187']
     scrape_interval: 30s
     scrape_timeout: 10s
 
-  # System Metrics (Node Exporter)
+  # System Metrics (Node Exporter for OS-level metrics)
   - job_name: 'node-exporter'
     static_configs:
       - targets: ['node-exporter:9100']
     scrape_interval: 30s
     scrape_timeout: 10s
 
-  # JVM Metrics
+  # jPOS-specific metrics filtering
+  # Captures ISO-8583 processing, TPS, MUX, channels, TransactionManager
+  - job_name: 'jpos-application-metrics'
+    static_configs:
+      - targets: ['bank-server:18583']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'jpos_.*|iso_.*|transaction_.*|mux_.*|channel_.*'
+        action: keep
+
+  # JVM Metrics for all Java services
   - job_name: 'jvm-metrics'
     static_configs:
-      - targets: ['acquirer-service:8080', 'gateway-service:8081', 'billing-service:8082', 'hsm-service:8083']
+      - targets:
+        - 'bank-server:9090'
+        - 'bank-server:18583'
+        - 'hsm-simulator:8080'
+        - 'atm-simulator:7070'
     metrics_path: '/actuator/prometheus'
     scrape_interval: 15s
-    metrics_relabel_configs:
+    metric_relabel_configs:
       - source_labels: [__name__]
-        regex: 'jvm_.*'
+        regex: 'jvm_.*|process_.*'
         action: keep
 
-  # Custom Business Metrics
-  - job_name: 'business-metrics'
+  # ATM Business Metrics
+  # Transaction success/failure rates, response times, balance inquiry, withdrawals
+  - job_name: 'atm-business-metrics'
     static_configs:
-      - targets: ['gateway-service:8081']
+      - targets: ['bank-server:9090']
     metrics_path: '/actuator/prometheus'
     scrape_interval: 30s
     metric_relabel_configs:
       - source_labels: [__name__]
-        regex: 'payment_.*|transaction_.*|queue_.*|circuit_breaker_.*'
+        regex: 'atm_.*|transaction_.*|account_.*|withdrawal_.*|balance_inquiry_.*'
         action: keep
 
-  # Queue Processing Metrics
-  - job_name: 'queue-metrics'
+  # HSM Cryptographic Metrics
+  # PIN verification, MAC generation, key rotation operations
+  - job_name: 'hsm-crypto-metrics'
     static_configs:
-      - targets: ['gateway-service:8081']
+      - targets: ['hsm-simulator:8080']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 15s
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'hsm_.*|pin_.*|mac_.*|key_rotation_.*|crypto_.*'
+        action: keep
+
+  # Connection Pool Metrics
+  # Database connection pool status (HikariCP)
+  - job_name: 'connection-pool-metrics'
+    static_configs:
+      - targets: ['bank-server:9090']
     metrics_path: '/actuator/prometheus'
     scrape_interval: 30s
     metric_relabel_configs:
       - source_labels: [__name__]
-        regex: 'queue_.*|retry_.*'
+        regex: 'hikaricp_.*|jdbc_.*'
         action: keep
+
+  # Prometheus Self-Monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s

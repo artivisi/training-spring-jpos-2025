@@ -1,0 +1,120 @@
+{
+  "keyRotationTests": {
+    "description": "Terminal-initiated key rotation test scenarios for TPK and TSK",
+    "scenarios": [
+      {
+        "name": "Terminal-Initiated TPK Rotation",
+        "description": "ATM terminal initiates rotation of Terminal PIN Key",
+        "method": "POST",
+        "endpoint": "/api/hsm/terminal/TRM-ISS001-ATM-001/request-rotation",
+        "request": {
+          "keyType": "TPK",
+          "rotationType": "SCHEDULED",
+          "description": "Monthly scheduled rotation",
+          "gracePeriodHours": 24
+        },
+        "expectedResult": {
+          "rotationId": "550e8400-e29b-41d4-a716-446655440000",
+          "oldKeyId": "TPK-TRM-ISS001-ATM-001-V1",
+          "newKeyId": "TPK-TRM-ISS001-ATM-001-V2",
+          "rotationType": "SCHEDULED",
+          "rotationStatus": "IN_PROGRESS",
+          "message": "Terminal-initiated rotation started. New key delivered immediately.",
+          "encryptedNewKey": "1A2B3C4D5E6F7890ABCDEF0123456789...",
+          "newKeyChecksum": "A8FC6D4EEB35",
+          "gracePeriodEndsAt": "2025-11-02T10:00:00"
+        },
+        "curlCommand": "curl -X POST http://localhost:8080/api/hsm/terminal/TRM-ISS001-ATM-001/request-rotation -H 'Content-Type: application/json' -d '{\"keyType\":\"TPK\",\"rotationType\":\"SCHEDULED\",\"description\":\"Monthly scheduled rotation\",\"gracePeriodHours\":24}'"
+      },
+      {
+        "name": "Terminal-Initiated TSK Rotation",
+        "description": "ATM terminal initiates rotation of Terminal Session Key (MAC)",
+        "method": "POST",
+        "endpoint": "/api/hsm/terminal/TRM-ISS001-ATM-001/request-rotation",
+        "request": {
+          "keyType": "TSK",
+          "rotationType": "SCHEDULED",
+          "description": "Monthly scheduled rotation",
+          "gracePeriodHours": 24
+        },
+        "expectedResult": {
+          "rotationId": "550e8400-e29b-41d4-a716-446655440001",
+          "oldKeyId": "TSK-TRM-ISS001-ATM-001-V1",
+          "newKeyId": "TSK-TRM-ISS001-ATM-001-V2",
+          "rotationType": "SCHEDULED",
+          "rotationStatus": "IN_PROGRESS"
+        },
+        "curlCommand": "curl -X POST http://localhost:8080/api/hsm/terminal/TRM-ISS001-ATM-001/request-rotation -H 'Content-Type: application/json' -d '{\"keyType\":\"TSK\",\"rotationType\":\"SCHEDULED\",\"description\":\"Monthly scheduled rotation\",\"gracePeriodHours\":24}'"
+      },
+      {
+        "name": "Get Updated Key",
+        "description": "Terminal retrieves the new encrypted key",
+        "method": "POST",
+        "endpoint": "/api/hsm/terminal/TRM-ISS001-ATM-001/get-updated-key",
+        "request": {
+          "rotationId": "550e8400-e29b-41d4-a716-446655440000",
+          "currentKeyChecksum": "A8FC6D4EEB350415"
+        },
+        "expectedResult": {
+          "rotationId": "550e8400-e29b-41d4-a716-446655440000",
+          "newKeyId": "TPK-TRM-ISS001-ATM-001-NEW",
+          "keyType": "TPK",
+          "encryptedNewKey": "A1B2C3D4...F0E1D2C3",
+          "newKeyChecksum": "B7A53E2FC461526",
+          "gracePeriodEndsAt": "2025-11-01T10:00:00",
+          "message": "New key delivered successfully. Please install and confirm."
+        }
+      },
+      {
+        "name": "Confirm Key Installation",
+        "description": "Terminal confirms successful installation of new key",
+        "method": "POST",
+        "endpoint": "/api/hsm/terminal/TRM-ISS001-ATM-001/confirm-key-update",
+        "request": {
+          "rotationId": "550e8400-e29b-41d4-a716-446655440000",
+          "confirmedBy": "ATM_SOFTWARE_v3.2"
+        },
+        "expectedResult": {
+          "rotationId": "550e8400-e29b-41d4-a716-446655440000",
+          "rotationType": "SCHEDULED",
+          "rotationStatus": "COMPLETED",
+          "totalParticipants": 1,
+          "confirmedParticipants": 1,
+          "message": "All participants confirmed. Rotation ready to complete."
+        },
+        "curlCommand": "curl -X POST http://localhost:8080/api/hsm/terminal/TRM-ISS001-ATM-001/confirm-key-update -H 'Content-Type: application/json' -d '{\"rotationId\":\"550e8400-e29b-41d4-a716-446655440000\",\"confirmedBy\":\"ATM_SOFTWARE_v3.2\"}'"
+      },
+      {
+        "name": "Get Rotation Status",
+        "description": "Check status of ongoing key rotation",
+        "method": "GET",
+        "endpoint": "/api/hsm/rotation/550e8400-e29b-41d4-a716-446655440000/status",
+        "expectedResult": {
+          "rotationId": "550e8400-e29b-41d4-a716-446655440000",
+          "rotationType": "SCHEDULED",
+          "rotationStatus": "COMPLETED",
+          "totalParticipants": 1,
+          "confirmedParticipants": 1
+        },
+        "curlCommand": "curl -X GET http://localhost:8080/api/hsm/rotation/550e8400-e29b-41d4-a716-446655440000/status -H 'Content-Type: application/json'"
+      },
+      {
+        "name": "Emergency Key Rotation",
+        "description": "Immediate key rotation due to security incident",
+        "method": "POST",
+        "endpoint": "/api/hsm/terminal/TRM-ISS001-ATM-001/request-rotation",
+        "request": {
+          "keyType": "TPK",
+          "rotationType": "EMERGENCY",
+          "description": "Suspected key compromise",
+          "gracePeriodHours": 0
+        },
+        "expectedResult": {
+          "rotationType": "EMERGENCY",
+          "gracePeriodHours": 0,
+          "message": "Emergency rotation initiated"
+        }
+      }
+    ]
+  }
+}

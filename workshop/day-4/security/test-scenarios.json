@@ -1,389 +1,172 @@
 {
-  "securityTestScenarios": {
-    "pinOperations": [
-      {
-        "name": "PIN Block Generation Format 0",
-        "description": "Generate PIN block using ANSI X9.8 Format 0",
-        "request": {
-          "pin": "123456",
-          "pan": "4111111111111111",
-          "format": 0
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "pinBlock": "041234567890ABCDE",
-          "format": 0,
-          "panHash": "HASHED_PAN_VALUE"
-        },
-        "validation": {
-          "pinBlockLength": 16,
-          "format": 0,
-          "validChecksum": true
-        }
-      },
-      {
-        "name": "PIN Block Generation Format 3",
-        "description": "Generate PIN block using ISO 9564-1 Format 3",
-        "request": {
-          "pin": "123456",
-          "pan": "4111111111111111",
-          "format": 3
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "pinBlock": "341234567890FEDCBA",
-          "format": 3,
-          "panHash": "HASHED_PAN_VALUE"
-        }
-      },
-      {
-        "name": "PIN Block Verification Success",
-        "description": "Verify correct PIN block against PAN and PIN",
-        "request": {
-          "pinBlock": "041234567890ABCDE",
-          "pan": "4111111111111111",
-          "pin": "123456",
-          "format": 0
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "verificationResult": true,
-          "message": "PIN verification successful"
-        }
-      },
-      {
-        "name": "PIN Block Verification Failure",
-        "description": "Verify incorrect PIN block",
-        "request": {
-          "pinBlock": "041234567890ABCDE",
-          "pan": "4111111111111111",
-          "pin": "654321",
-          "format": 0
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "verificationResult": false,
-          "message": "PIN verification failed"
-        }
-      },
-      {
-        "name": "PIN Block Format Conversion",
-        "description": "Convert PIN block from Format 0 to Format 3",
-        "request": {
-          "pinBlock": "041234567890ABCDE",
-          "pan": "4111111111111111",
-          "fromFormat": 0,
-          "toFormat": 3
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "originalPinBlock": "041234567890ABCDE",
-          "convertedPinBlock": "341234567890FEDCBA",
-          "fromFormat": 0,
-          "toFormat": 3
-        }
+  "atmSecurityTestScenarios": {
+    "description": "Master index for ATM security test scenarios - Day 4 Workshop",
+    "version": "1.0",
+    "lastUpdated": "2025-11-02",
+    "overview": {
+      "purpose": "Comprehensive test suite for ATM security features including PIN verification, MAC generation, key rotation, and end-to-end transactions",
+      "scope": "Covers HSM integration, cryptographic operations, ISO-8583 messaging, and security error handling",
+      "testEnvironment": {
+        "hsmSimulator": "http://localhost:8080",
+        "bankServer": "http://localhost:9090",
+        "atmSimulator": "http://localhost:7070",
+        "database": "PostgreSQL on localhost:5432"
       }
-    ],
-    "macOperations": [
+    },
+    "testCategories": [
       {
-        "name": "MAC Generation ANSI X9.19",
-        "description": "Generate MAC using ANSI X9.19 algorithm",
-        "request": {
-          "message": "0200B220000000100000000000001000000000000001234567890123456000000001270000912341025123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890",
-          "key": "0123456789ABCDEF0123456789ABCDEF",
-          "algorithm": "ANSI_X9_19"
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "mac": "A1B2C3D4E5F60708",
-          "algorithm": "ANSI_X9_19",
-          "keyIdentifier": "MAC_KEY_001"
-        }
-      },
-      {
-        "name": "MAC Verification Success",
-        "description": "Verify correct MAC for message",
-        "request": {
-          "message": "0200B220000000100000000000001000000000000001234567890123456000000001270000912341025123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890",
-          "mac": "A1B2C3D4E5F60708",
-          "key": "0123456789ABCDEF0123456789ABCDEF",
-          "algorithm": "ANSI_X9_19"
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "verificationResult": true,
-          "message": "MAC verification successful"
-        }
-      },
-      {
-        "name": "MAC Verification Failure",
-        "description": "Verify incorrect MAC for message",
-        "request": {
-          "message": "0200B220000000100000000000001000000000000001234567890123456000000001270000912341025123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890",
-          "mac": "FFFFFFFFFFFFFFFF",
-          "key": "0123456789ABCDEF0123456789ABCDEF",
-          "algorithm": "ANSI_X9_19"
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "verificationResult": false,
-          "message": "MAC verification failed"
-        }
-      },
-      {
-        "name": "MAC Update with Field Change",
-        "description": "Update MAC when specific fields change",
-        "request": {
-          "originalMessage": "0200B220000000100000000000001000000000000001234567890123456000000001270000912341025",
-          "originalMac": "A1B2C3D4E5F60708",
-          "changedMessage": "0200B220000000100000000000001000000000000001234567890123456000000002570000912341025",
-          "key": "0123456789ABCDEF0123456789ABCDEF",
-          "algorithm": "ANSI_X9_19",
-          "changedFields": ["de_4"]
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "newMac": "B2C3D4E5F6070809",
-          "changedFields": ["de_4"],
-          "originalAmount": "00000000127000",
-          "newAmount": "00000000257000"
-        }
-      }
-    ],
-    "keyManagement": [
-      {
-        "name": "Generate ZPK Key",
-        "description": "Generate Zone PIN Key for PIN operations",
-        "request": {
-          "keyType": "ZPK",
-          "algorithm": "DESede",
-          "keyLength": 192
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "keyIdentifier": "ZPK_002",
-          "keyType": "ZPK",
-          "algorithm": "DESede",
-          "keyLength": 192,
-          "keyValue": "ENCRYPTED_KEY_VALUE",
-          "checksum": "KEY_CHECKSUM_VALUE"
-        }
-      },
-      {
-        "name": "Generate ZAK Key",
-        "description": "Generate Zone Authentication Key for MAC operations",
-        "request": {
-          "keyType": "ZAK",
-          "algorithm": "DESede",
-          "keyLength": 192
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "keyIdentifier": "ZAK_002",
-          "keyType": "ZAK",
-          "algorithm": "DESede",
-          "keyLength": 192,
-          "keyValue": "ENCRYPTED_KEY_VALUE",
-          "checksum": "KEY_CHECKSUM_VALUE"
-        }
-      },
-      {
-        "name": "Key Exchange Success",
-        "description": "Successfully exchange session key between systems",
-        "request": {
-          "keyType": "ZPK",
-          "targetSystem": "ACQUIRER",
-          "kekIdentifier": "ZMK_001",
-          "keyData": "WRAPPED_KEY_DATA"
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "exchangeId": "EXCHANGE_001",
-          "keyIdentifier": "ZPK_003",
-          "targetSystem": "ACQUIRER",
-          "wrappedKey": "WRAPPED_KEY_FOR_TRANSPORT",
-          "verificationCode": "VERIFICATION_CODE_123"
-        }
-      },
-      {
-        "name": "Key Rotation",
-        "description": "Rotate existing key to new version",
-        "request": {
-          "keyIdentifier": "ZPK_001",
-          "newKeyData": "NEW_WRAPPED_KEY",
-          "rotationReason": "SCHEDULED_ROTATION"
-        },
-        "expectedResult": {
-          "status": "SUCCESS",
-          "oldKeyId": "ZPK_001",
-          "newKeyId": "ZPK_001_V2",
-          "rotationReason": "SCHEDULED_ROTATION",
-          "effectiveDate": "2025-10-21T10:00:00Z"
-        }
-      }
-    ],
-    "integrationTests": [
-      {
-        "name": "End-to-End Secure Payment",
-        "description": "Complete payment flow with PIN and MAC security",
-        "steps": [
-          {
-            "step": 1,
-            "action": "Generate PIN Block",
-            "request": {
-              "pin": "123456",
-              "pan": "4111111111111111",
-              "format": 0
-            }
-          },
-          {
-            "step": 2,
-            "action": "Generate MAC for Message",
-            "request": {
-              "message": "ISO8583_MESSAGE_WITH_PIN_BLOCK",
-              "key": "ZPK_001"
-            }
-          },
-          {
-            "step": 3,
-            "action": "Process Payment",
-            "request": {
-              "transactionId": "SECURE_TXN_001",
-              "billId": "TEST001",
-              "pinBlock": "GENERATED_PIN_BLOCK",
-              "mac": "GENERATED_MAC"
-            }
-          },
-          {
-            "step": 4,
-            "action": "Verify PIN at Billing",
-            "request": {
-              "pinBlock": "RECEIVED_PIN_BLOCK",
-              "pan": "4111111111111111",
-              "pin": "123456"
-            }
-          },
-          {
-            "step": 5,
-            "action": "Verify MAC at Billing",
-            "request": {
-              "message": "RECEIVED_MESSAGE",
-              "mac": "RECEIVED_MAC",
-              "key": "ZPK_001"
-            }
-          }
-        ],
-        "expectedResult": {
-          "status": "SUCCESS",
-          "transactionId": "SECURE_TXN_001",
-          "paymentStatus": "COMPLETED",
-          "pinVerified": true,
-          "macVerified": true,
-          "securityLevel": "HIGH"
-        }
-      },
-      {
-        "name": "Security Audit Trail",
-        "description": "Verify all security operations are properly audited",
-        "expectedAuditEntries": [
-          {
-            "operationType": "PIN_ENCRYPT",
-            "module": "ACQUIRER",
-            "status": "SUCCESS"
-          },
-          {
-            "operationType": "MAC_GENERATE",
-            "module": "ACQUIRER",
-            "status": "SUCCESS"
-          },
-          {
-            "operationType": "PIN_VERIFY",
-            "module": "BILLING",
-            "status": "SUCCESS"
-          },
-          {
-            "operationType": "MAC_VERIFY",
-            "module": "BILLING",
-            "status": "SUCCESS"
-          }
+        "category": "Configuration",
+        "file": "test-config.json",
+        "description": "Shared configuration, test data, and cryptographic keys for all test scenarios",
+        "includes": [
+          "Service URLs and ports",
+          "Test terminal configuration (TRM-ISS001-ATM-001)",
+          "Test accounts (3 accounts with different PIN verification methods)",
+          "Cryptographic keys (TPK, TSK)",
+          "ISO-8583 constants (processing codes, response codes)"
         ]
+      },
+      {
+        "category": "PIN Operations",
+        "file": "pin-operations-test.json",
+        "description": "PIN encryption, decryption, and verification test scenarios",
+        "testCount": 4,
+        "includes": [
+          "PIN verification with PVV (recommended method)",
+          "PIN verification failure (incorrect PIN)",
+          "PIN encryption for terminal",
+          "PIN block generation (ISO-0 format)"
+        ],
+        "hsmEndpoints": [
+          "POST /api/hsm/pin/verify-with-pvv",
+          "POST /api/hsm/pin/encrypt",
+          "POST /api/hsm/pin/generate-pinblock"
+        ]
+      },
+      {
+        "category": "MAC Operations",
+        "file": "mac-operations-test.json",
+        "description": "MAC generation and verification for message integrity",
+        "testCount": 5,
+        "includes": [
+          "MAC generation with AES-CMAC",
+          "MAC verification (valid)",
+          "MAC verification failure (tampered message)",
+          "MAC for balance inquiry message",
+          "MAC for withdrawal message"
+        ],
+        "hsmEndpoints": [
+          "POST /api/hsm/mac/generate",
+          "POST /api/hsm/mac/verify"
+        ]
+      },
+      {
+        "category": "Key Rotation",
+        "file": "key-rotation-test.json",
+        "description": "Terminal-initiated key rotation for TPK and TSK",
+        "testCount": 6,
+        "includes": [
+          "Terminal-initiated TPK rotation",
+          "Terminal-initiated TSK rotation",
+          "Get updated key",
+          "Confirm key installation",
+          "Get rotation status",
+          "Emergency key rotation"
+        ],
+        "hsmEndpoints": [
+          "POST /api/hsm/terminal/{terminalId}/request-rotation",
+          "POST /api/hsm/terminal/{terminalId}/get-updated-key",
+          "POST /api/hsm/terminal/{terminalId}/confirm-key-update",
+          "GET /api/hsm/rotation/{rotationId}/status"
+        ]
+      },
+      {
+        "category": "ATM Transactions",
+        "file": "atm-transactions-test.json",
+        "description": "End-to-end ATM transaction flows with PIN and MAC security",
+        "testCount": 6,
+        "includes": [
+          "Balance inquiry (successful)",
+          "Cash withdrawal (successful)",
+          "Withdrawal with insufficient funds",
+          "Balance inquiry with invalid PIN",
+          "Transaction with invalid account",
+          "Transaction without terminal sign-on"
+        ],
+        "iso8583ProcessingCodes": {
+          "balanceInquiry": "310000",
+          "withdrawal": "010000"
+        },
+        "responseCodes": ["00", "14", "51", "55", "91"]
+      },
+      {
+        "category": "Error Scenarios",
+        "file": "error-scenarios-test.json",
+        "description": "Error handling and security violation detection",
+        "testCount": 10,
+        "includes": [
+          "MAC verification failure (tampered message)",
+          "Expired key usage attempt",
+          "Invalid PIN format",
+          "Missing required field",
+          "Key not found",
+          "Database connection failure",
+          "HSM unavailable",
+          "Concurrent transaction conflict",
+          "Invalid ISO-8583 message format",
+          "Replay attack detection"
+        ],
+        "severityLevels": {
+          "CRITICAL": 4,
+          "HIGH": 3,
+          "MEDIUM": 3
+        }
+      },
+      {
+        "category": "Performance Tests",
+        "file": "performance-test.json",
+        "description": "Performance benchmarks and load testing scenarios",
+        "testCount": 7,
+        "includes": [
+          "PIN verification performance (100 req/s)",
+          "MAC operation performance (200 req/s)",
+          "ATM transaction throughput (100 txn/s)",
+          "Key rotation performance",
+          "Database query performance",
+          "Stress test - peak load (500 txn/s)",
+          "Soak test - sustained load (2 hours)"
+        ],
+        "tools": ["Apache JMeter", "k6", "Gatling", "wrk"]
       }
     ],
-    "errorScenarios": [
-      {
-        "name": "Invalid PIN Block Format",
-        "description": "Test error handling for invalid PIN block format",
-        "request": {
-          "pinBlock": "INVALID_FORMAT",
-          "pan": "4111111111111111",
-          "pin": "123456",
-          "format": 99
-        },
-        "expectedResult": {
-          "status": "ERROR",
-          "errorCode": "INVALID_PIN_FORMAT",
-          "message": "Unsupported PIN block format"
-        }
+    "quickStart": {
+      "step1": "Review test-config.json for test environment configuration",
+      "step2": "Start all services (HSM on 8080, Bank Server on 9090, ATM Simulator on 7070)",
+      "step3": "Run PIN operations tests to verify HSM connectivity",
+      "step4": "Run MAC operations tests to verify message integrity",
+      "step5": "Run key rotation tests to verify key management",
+      "step6": "Run ATM transaction tests for end-to-end validation",
+      "step7": "Run error scenarios to verify error handling",
+      "step8": "Run performance tests to validate under load"
+    },
+    "testExecution": {
+      "manual": {
+        "method": "Use curl commands provided in each test file",
+        "example": "See curlCommand field in test scenarios"
       },
-      {
-        "name": "MAC Key Not Found",
-        "description": "Test error handling when MAC key is not available",
-        "request": {
-          "message": "TEST_MESSAGE",
-          "mac": "TEST_MAC",
-          "key": "NON_EXISTENT_KEY"
-        },
-        "expectedResult": {
-          "status": "ERROR",
-          "errorCode": "KEY_NOT_FOUND",
-          "message": "MAC key not found"
-        }
-      },
-      {
-        "name": "Expired Key Usage",
-        "description": "Test error handling when using expired keys",
-        "request": {
-          "keyIdentifier": "EXPIRED_KEY_001",
-          "operation": "ENCRYPT"
-        },
-        "expectedResult": {
-          "status": "ERROR",
-          "errorCode": "KEY_EXPIRED",
-          "message": "Key has expired"
-        }
+      "automated": {
+        "postman": "Import JSON files into Postman collections",
+        "jmeter": "Convert to JMeter test plans",
+        "k6": "Convert to k6 JavaScript scripts",
+        "junit": "Integrate with Spring Boot test suite"
       }
-    ],
-    "performanceTests": [
-      {
-        "name": "PIN Operation Performance",
-        "description": "Test PIN operation response times",
-        "loadTest": {
-          "concurrentUsers": 10,
-          "requestsPerSecond": 100,
-          "duration": "60s"
-        },
-        "expectedResults": {
-          "avgResponseTime": "< 100ms",
-          "p95ResponseTime": "< 200ms",
-          "p99ResponseTime": "< 500ms",
-          "errorRate": "< 1%"
-        }
-      },
-      {
-        "name": "MAC Operation Performance",
-        "description": "Test MAC operation response times",
-        "loadTest": {
-          "concurrentUsers": 20,
-          "requestsPerSecond": 200,
-          "duration": "60s"
-        },
-        "expectedResults": {
-          "avgResponseTime": "< 50ms",
-          "p95ResponseTime": "< 100ms",
-          "p99ResponseTime": "< 200ms",
-          "errorRate": "< 0.5%"
-        }
-      }
-    ]
+    },
+    "documentation": {
+      "workshopInstructions": "../INSTRUCTIONS.md",
+      "hsmSimulatorApi": "https://github.com/artivisi/hsm-simulator/blob/main/docs/API.md",
+      "iso8583Reference": "ISO 8583:1993 / ISO 8583:2003",
+      "pinStandard": "ISO 9564-1",
+      "macStandard": "ISO 16609 (AES-CMAC)"
+    }
   }
 }

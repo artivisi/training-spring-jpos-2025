@@ -1,10 +1,12 @@
-# Hari 2 – Integrasi JPOS & Dasar ISO-8583
+# Hari 2 – JPOS Integration & ISO-8583 Basics
 
 ## Tujuan
-- Setup server JPos Q2
-- Implementasi struktur pesan ISO-8583
-- Pesan administratif (Logon, Logoff, Echo)
-- Manajemen channel dan penanganan koneksi
+- Setup jPOS Q2 Server pada Bank Server (port 22222)
+- Setup jPOS MUX pada ATM Simulator untuk ISO-8583 client
+- Implementasi struktur pesan ISO-8583 untuk ATM communication
+- Pesan administratif (Sign-On, Sign-Off, Echo)
+- Manajemen channel dan penanganan koneksi ATM-to-Server
+- Praktikum: komunikasi ISO-8583 awal (Sign-On/Echo)
 
 ## 1. Setup JPos
 
@@ -75,637 +77,362 @@ Peserta akan mendefinisikan:
 
 ## 3. Pesan Administratif
 
-### 3.1 Pesan Logon (MTI 0800)
+### 3.1 Pesan Sign-On (MTI 0800)
 ```mermaid
 sequenceDiagram
-    participant Acquirer
-    participant Gateway
-    participant Switch
+    participant ATM
+    participant Bank Server
 
-    Acquirer->>Gateway: Logon Request (MTI 0800)
-    Note over Acquirer,Gateway: DE 70 = 001 (Logon)
-    Gateway->>Switch: Forward Logon
-    Switch->>Gateway: Logon Response (MTI 0810)
-    Note over Gateway,Switch: DE 39 = 00 (Approved)
-    Gateway->>Acquirer: Forward Response
+    ATM->>Bank Server: Sign-On Request (MTI 0800)
+    Note over ATM,Bank Server: DE 70 = 001 (Sign-On)<br/>DE 41 = Terminal ID<br/>DE 42 = Institution ID
+    Bank Server->>Bank Server: Register Terminal Connection
+    Bank Server->>ATM: Sign-On Response (MTI 0810)
+    Note over Bank Server,ATM: DE 39 = 00 (Approved)
 ```
 
 ### 3.2 Echo Test (MTI 0800)
 ```mermaid
 sequenceDiagram
-    participant Acquirer
-    participant Gateway
-    participant Switch
+    participant ATM
+    participant Bank Server
 
-    Acquirer->>Gateway: Echo Request (MTI 0800)
-    Note over Acquirer,Gateway: DE 70 = 301 (Echo Test)
-    Gateway->>Switch: Forward Echo
-    Switch->>Gateway: Echo Response (MTI 0810)
-    Note over Gateway,Switch: DE 39 = 00 (Success)
-    Gateway->>Acquirer: Forward Response
+    ATM->>Bank Server: Echo Request (MTI 0800)
+    Note over ATM,Bank Server: DE 70 = 301 (Echo Test)<br/>DE 11 = STAN
+    Bank Server->>ATM: Echo Response (MTI 0810)
+    Note over Bank Server,ATM: DE 39 = 00 (Success)<br/>DE 11 = Same STAN
 ```
 
 ### 3.3 Konfigurasi Pesan Administratif
-Peserta akan mengimplementasikan layanan QBean untuk:
-- **Logon (MTI 0800, DE 70 = 001)**: Pembuatan koneksi jaringan
-- **Echo Test (MTI 0800, DE 70 = 301)**: Pemeriksaan kesehatan koneksi
-- **Logoff (MTI 0800, DE 70 = 002)**: Penghentian koneksi
-- **Network Management Responses (MTI 0810)**: Penanganan respons
+Peserta akan mengimplementasikan komponen jPOS untuk:
+
+**Pada Bank Server (jPOS Q2 Server):**
+- **Sign-On Handler (MTI 0800, DE 70 = 001)**: Register terminal connection dan track status
+- **Echo Test Handler (MTI 0800, DE 70 = 301)**: Connection health check response
+- **Sign-Off Handler (MTI 0800, DE 70 = 002)**: Unregister terminal connection
+- **Network Management Responses (MTI 0810)**: Build dan send response messages
+
+**Pada ATM Simulator (jPOS MUX Client):**
+- **Automatic Sign-On Service**: Send sign-on saat connection established
+- **Echo Request Generator**: Periodic heartbeat untuk keep-alive
+- **Sign-Off on Shutdown**: Graceful disconnection
 
 Tugas implementasi:
-- Buat kelas QBean untuk setiap tipe pesan administratif
-- Konfigurasi routing pesan dan penanganan respons
+- Buat Transaction Participants untuk handling pesan administratif
+- Konfigurasi Q2 deployment descriptors (XML files)
+- Setup QMUX untuk request-response correlation
 - Implementasikan timeout dan logika retry
 - Tambahkan logging untuk operasi administratif
+- Track terminal sign-on status dalam database/memory
 
 ## 4. Konfigurasi Channel
 
-### 4.1 Tipe Channel
-- **ChannelAdaptor**: Koneksi TCP dasar
-- **ASCIIChannel**: Komunikasi berbasis karakter
-- **RawChannel**: Komunikasi pesan biner
-- **ChannelPool**: Multiple koneksi untuk load balancing
-
-### 4.2 Manajemen Koneksi
+### 4.1 Arsitektur Channel ATM System
 ```mermaid
 graph TB
-    A[Q2 Server] --> B[ChannelAdaptor]
-    B --> C[TCP Socket]
-    C --> D[Remote Host]
+    subgraph "Bank Server"
+        A[QServer<br/>Port 22222]
+        B[ASCIIChannel]
+        C[Base24Packager]
+        D[TransactionManager]
+    end
 
-    E[Connection Pool] --> F[Channel 1]
-    E --> G[Channel 2]
-    E --> H[Channel N]
+    subgraph "ATM Simulator"
+        E[ChannelAdaptor]
+        F[ASCIIChannel]
+        G[Base24Packager]
+        H[QMUX]
+    end
 
-    F --> C
-    G --> C
-    H --> C
+    E -->|TCP Connection| A
+    A --> B
+    B --> C
+    C --> D
 
-    I[MUX] --> E
-    J[Switch] --> I
+    E --> F
+    F --> G
+    G --> H
 
     style A fill:#e1f5fe
-    style B fill:#f3e5f5
-    style I fill:#e8f5e8
-    style J fill:#fff3e0
+    style E fill:#f3e5f5
+    style D fill:#e8f5e8
+    style H fill:#fff3e0
 ```
 
-### 4.3 Contoh Konfigurasi Channel
-Peserta akan membuat konfigurasi channel dengan:
-- **Setup ChannelAdaptor** untuk koneksi TCP
-- **Konfigurasi RawChannel** untuk messaging biner
-- Properti koneksi (host, port, timeout)
-- Pengaturan rekoneksi dan monitoring kesehatan
-- Integrasi packager
+### 4.2 Bank Server Channel Configuration
+Peserta akan membuat konfigurasi untuk jPOS Q2 Server:
+
+**File: `src/main/resources/deploy/10_qserver.xml`**
+- **QServer**: Listen pada port 22222 untuk incoming ATM connections
+- **ASCIIChannel**: Communication channel untuk ISO-8583 messages
+- **Base24Packager**: Message format specification
+- **Configuration Properties**:
+  - Port: 22222
+  - Max sessions: 100
+  - Timeout settings
+  - Channel class: org.jpos.iso.channel.ASCIIChannel
+  - Packager: org.jpos.iso.packager.BASE24Packager
+
+### 4.3 ATM Simulator Channel Configuration
+Peserta akan membuat konfigurasi untuk jPOS MUX Client:
+
+**File: `src/main/resources/deploy/12_channel.xml`**
+- **ChannelAdaptor**: Outbound connection ke Bank Server
+- **ASCIIChannel**: Same channel type as server
+- **Base24Packager**: Same packager as server
+- **Configuration Properties**:
+  - Host: localhost
+  - Port: 22222
+  - Timeout: 0 (using heartbeat instead)
+  - Auto-reconnect: enabled
+  - Keep-alive: enabled
 
 ## 5. Konfigurasi MUX
 
-### 5.1 Setup MUX (Multiplexer)
-- Manajemen connection pooling
-- Korelasi request-response
-- Penanganan timeout
-- Logika rekoneksi
+### 5.1 Setup MUX untuk ATM Simulator
+MUX (Multiplexer) pada ATM simulator menangani:
+- **Request-Response Correlation**: Match response dengan request menggunakan STAN (field 11)
+- **Timeout Management**: Handle timeout untuk requests yang tidak mendapat response
+- **Thread Management**: Virtual threads untuk concurrent transaction handling
+- **Connection Management**: Single persistent connection ke Bank Server
 
-### 5.2 Contoh Konfigurasi MUX
-Peserta akan mengimplementasikan MUX dengan:
-- **Manajemen connection pool** untuk multiple channel
-- **Korelasi request-response** dengan tracking STAN
-- **Penanganan timeout** dengan batas yang dapat dikonfigurasi
-- **Rekoneksi otomatis** dengan exponential backoff
-- **Load balancing** across available connections
+### 5.2 QMUX Configuration
+Peserta akan mengimplementasikan QMUX pada ATM simulator:
+
+**File: `src/main/resources/deploy/15_mux.xml`**
+- **QMUX Name**: atm-mux
+- **Channel Reference**: Reference ke channel yang sudah dikonfigurasi
+- **Timeout**: 30000ms (30 detik)
+- **MTI Mapping**:
+  - Request: 0200, 0800
+  - Response: 0210, 0810
+- **Key Configuration**: STAN (field 11) untuk request-response matching
+
+**Fitur QMUX:**
+- Automatic request-response matching
+- Timeout handling
+- Concurrent transaction support
+- Thread-safe operations
 
 ## 6. Pengujian Implementasi
 
-### 6.1 Uji Pesan Administratif dengan Netcat (Format ASCII)
+### 6.1 Testing Setup
+Sebelum testing, pastikan:
+1. PostgreSQL running (kedua database untuk server dan simulator)
+2. Bank Server running pada port 9090 (REST) dan 22222 (ISO-8583)
+3. ATM Simulator running pada port 7070
+
+### 6.2 Test Automatic Sign-On
+
+**Cara Testing:**
+1. Start Bank Server terlebih dahulu
+2. Start ATM Simulator
+3. Monitor logs dari kedua aplikasi
+
+**Expected Behavior:**
 ```bash
-# Buat file pesan logon ISO-8583 dalam format ASCII (lebih mudah dibaca)
-# MTI 0800 + Primary Bitmap + Secondary Bitmap + Data Elements
-# Primary Bitmap: 8000000000000000 (Bit 1 = 1 untuk secondary bitmap, Bit 65 = 1 untuk DE 70)
-# Secondary Bitmap: 0000000000000040 (Bit 70 = 1 untuk DE 70)
-# Format: 0800 + 8000000000000000 + 0000000000000040 + 001 (DE 70=Logon) + 12345678 (DE 98 data)
-echo "080080000000000000000000000000000400010012345678" > logon.ascii
+# ATM Simulator Log:
+[INFO] ATM Simulator starting on port 7070
+[INFO] Connecting to Bank Server at localhost:22222
+[INFO] Connection established
+[INFO] Sending automatic sign-on message
+[INFO] Sign-on successful, terminal registered
 
-# Kirim pesan logon ke channel Q2 (port 9010)
-# JPos channel akan mengkonversi ASCII ke format ISO-8583 yang sesuai
-nc localhost 9010 < logon.ascii
-
-# Buat file pesan echo test
-# MTI 0800 + Primary Bitmap + Secondary Bitmap + Data Elements
-echo "0800800000000000000000000000000004000301012345678" > echo.ascii
-
-# Kirim pesan echo test
-nc localhost 9010 < echo.ascii
-
-# Buat file pesan logoff
-# MTI 0800 + Primary Bitmap + Secondary Bitmap + Data Elements
-echo "080080000000000000000000000000000400020012345678" > logoff.ascii
-
-# Kirim pesan logoff
-nc localhost 9010 < logoff.ascii
+# Bank Server Log:
+[INFO] Bank Server listening on port 22222
+[INFO] New connection from ATM terminal
+[INFO] Received sign-on request: MTI=0800, DE70=001
+[INFO] Terminal TRM-ISS001-ATM-001 signed on successfully
+[INFO] Sending sign-on response: MTI=0810, DE39=00
 ```
 
-### 6.2 Uji Pesan ISO-8583 dengan Netcat (Format ASCII)
+**Check Sign-On Status via REST API:**
 ```bash
-# Buat file pesan financial request (MTI 0200) dalam format ASCII
-# Format: MTI + Bitmap + Data Elements
-# MTI: 0200 (Authorization Request)
-# Bitmap: F24000002001C000 (DE 2,4,11,12,13,22,37,39,48)
-#
-# Data Elements (dalam format ASCII yang mudah dibaca):
-# DE 2  (PAN): 4111111111111111
-# DE 4  (Amount): 00000000152500
-# DE 11 (STAN): 000001
-# DE 12 (Time): 091530
-# DE 13 (Date): 1025
-# DE 22 (POS Entry Mode): 011
-# DE 37 (RRN): 091530000001
-# DE 39 (Response Code): 00
-# DE 48 (Additional Data): BILL001CUST001
+# Check ATM sign-on status
+curl http://localhost:7070/atm/status/signon
 
-# Pesan financial request sederhana (ASCII)
-echo "0200F24000002001C000411111111111111110000000015250000010091530102501109153000000100BILL001CUST001" > financial.ascii
+# Response:
+{
+  "signedOn": true,
+  "timestamp": "2025-11-02T10:30:00"
+}
 
-# Kirim pesan financial ke channel Q2
-# JPos akan memproses format ASCII ini sesuai konfigurasi packager
-nc localhost 9010 < financial.ascii
+# Check connected terminals from Bank Server
+curl http://localhost:9090/api/admin/key-rotation/connected-terminals
 
-# Alternative: buat pesan step by step untuk lebih jelas
-echo -n "0200F24000002001C000" > financial_step.ascii      # MTI + Bitmap
-echo -n "4111111111111111" >> financial_step.ascii         # DE 2 (PAN)
-echo -n "00000000152500" >> financial_step.ascii           # DE 4 (Amount)
-echo -n "000001" >> financial_step.ascii                    # DE 11 (STAN)
-echo -n "091530" >> financial_step.ascii                    # DE 12 (Time)
-echo -n "1025" >> financial_step.ascii                      # DE 13 (Date)
-echo -n "011" >> financial_step.ascii                       # DE 22 (POS Entry)
-echo -n "091530000001" >> financial_step.ascii             # DE 37 (RRN)
-echo -n "00" >> financial_step.ascii                        # DE 39 (Response)
-echo -n "BILL001CUST001" >> financial_step.ascii           # DE 48 (Additional)
-
-# Kirim versi step-by-step
-nc localhost 9010 < financial_step.ascii
-
-# Test dengan amount berbeda
-echo "0200F24000002001C000411111111111111110000000005000000010091530102501109153000000100BILL002CUST002" > financial_test2.ascii
-nc localhost 9010 < financial_test2.ascii
+# Response:
+[
+  {
+    "terminalId": "TRM-ISS001-ATM-001",
+    "signedOn": true,
+    "signOnTime": "2025-11-02T10:30:00"
+  }
+]
 ```
 
-### 6.3 Monitoring Alur Pesan
+### 6.3 Test Manual Sign-Off
+
+**Cara Testing:**
 ```bash
-# Monitor Q2 logs untuk melihat pesan yang diterima
-tail -f logs/q2.log | grep -E "(MTI|DE|Channel|Message)"
+# Trigger manual sign-off via REST API
+curl -X POST http://localhost:7070/atm/signoff
 
-# Monitor koneksi TCP ke port JPos
-netstat -an | grep 9010
-
-# Monitor traffic pada port channel (gunakan tcpdump jika tersedia)
-sudo tcpdump -i lo port 9010 -X
-
-# Test koneksi ke channel
-telnet localhost 9010
-
-# Cek status channel melalui Q2 Manager (jika ada HTTP endpoint)
-curl http://localhost:8081/api/v1/admin/channel/status
-curl http://localhost:8081/api/v1/admin/health
+# Response:
+{
+  "status": "success",
+  "message": "Signed off successfully"
+}
 ```
 
-### 6.4 Tools Tambahan untuk Pengujian
+**Expected Behavior:**
 ```bash
-# Install tools untuk hex manipulation (jika belum ada)
-# macOS: sudah tersedia
-# Linux: sudo apt-get install xxd
+# ATM Simulator Log:
+[INFO] Manual sign-off requested
+[INFO] Sending sign-off message: MTI=0800, DE70=002
+[INFO] Sign-off successful
 
-# Menggunakan xxd untuk melihat hex dump dari pesan
-xxd financial.bin
-
-# Menggunakan hexdump untuk inspect pesan
-hexdump -C financial.bin
-
-# Script untuk mengirim pesan berulang (test load)
-for i in {1..10}; do
-  echo "Sending message $i..."
-  nc localhost 9010 < financial.bin
-  sleep 0.5
-done
-
-# Menggunakan socat untuk koneksi persisten (jika tersedia)
-socat TCP:localhost:9010 FILE:financial_request.bin
-
-# Menggunakan telnet untuk manual testing
-telnet localhost 9010
-# Ketik pesan hex secara manual, atau paste binary data
+# Bank Server Log:
+[INFO] Received sign-off request from TRM-ISS001-ATM-001
+[INFO] Terminal unregistered
+[INFO] Sending sign-off response: MTI=0810, DE39=00
 ```
 
-### 6.5 Debug Pesan ISO-8583 (Format ASCII)
+### 6.4 Test Echo/Heartbeat
+
+Echo messages akan dikirim secara otomatis oleh ATM simulator untuk keep-alive.
+
+**Monitor Logs:**
 ```bash
-# Parsing dan memeriksa struktur pesan ASCII yang lebih mudah dibaca
+# ATM Simulator akan mengirim echo secara periodic
+tail -f logs/atm-simulator.log | grep -i echo
 
-# Cek panjang pesan ASCII
-wc -c financial.ascii
-
-# Lihat pesan lengkap dalam format ASCII (human-readable)
-cat financial.ascii
-
-# Validasi struktur pesan
-# MTI (4 karakter pertama)
-head -c 4 financial.ascii
-
-# Bitmap (8 karakter berikutnya, dalam hex)
-head -c 12 financial.ascii | tail -c 8
-
-# Parse DE fields secara manual untuk pemahaman
-# Ambil MTI
-cut -c1-4 financial.ascii
-
-# Ambil Bitmap
-cut -c5-12 financial.ascii
-
-# Ambil PAN (DE 2) - asumsikan 16 digit
-cut -c13-28 financial.ascii
-
-# Ambil Amount (DE 4) - asumsikan 15 digit
-cut -c29-43 financial.ascii
-
-# Verifikasi format pesan dengan grep
-grep -E "^[0-9]{4}[0-9A-F]{8}" financial.ascii
-
-# Buat helper script untuk parsing pesan ASCII
-cat > parse_iso8583.sh << 'EOF'
-#!/bin/bash
-FILE=$1
-echo "Parsing ISO-8583 message: $FILE"
-echo "MTI: $(head -c 4 $FILE)"
-echo "Bitmap: $(head -c 12 $FILE | tail -c 8)"
-echo "PAN (DE 2): $(head -c 28 $FILE | tail -c 16)"
-echo "Amount (DE 4): $(head -c 43 $FILE | tail -c 15)"
-echo "STAN (DE 11): $(head -c 46 $FILE | tail -c 6)"
-echo "Time (DE 12): $(head -c 52 $FILE | tail -c 6)"
-echo "Date (DE 13): $(head -c 56 $FILE | tail -c 4)"
-EOF
-
-chmod +x parse_iso8583.sh
-./parse_iso8583.sh financial.ascii
+# Expected log output:
+[DEBUG] Sending periodic echo message
+[DEBUG] Echo response received, connection alive
 ```
 
-## 7. Contoh Pesan untuk Pengujian
+### 6.5 Monitor ISO-8583 Messages
 
-### 7.1 Contoh Request Financial (Format ASCII)
+**Monitor Bank Server Logs:**
 ```bash
-# Contoh lengkap pesan financial request (MTI 0200) dalam format ASCII
-# Format: MTI(4) + Bitmap(8) + Data Elements
-#
-# MTI: 0200 (Authorization Request)
-# Bitmap: F23800002001C080 (DE 2,3,4,11,12,13,18,22,32,37,39,41,48)
-#
-# Data Elements (mudah dibaca):
-# DE 2  (PAN): 4111111111111111
-# DE 3  (Processing Code): 123456
-# DE 4  (Amount): 00000000152500
-# DE 11 (STAN): 000001
-# DE 12 (Time): 091530
-# DE 13 (Date): 1025
-# DE 18 (Merchant Type): 6011
-# DE 22 (POS Entry Mode): 011
-# DE 32 (Acquiring Institution): 12345
-# DE 37 (Retrieval Reference): 091530000001
-# DE 39 (Response Code): 00
-# DE 41 (Card Acceptor Terminal ID): 12345678
-# DE 48 (Additional Data): BILL001CUST001
+# Monitor all ISO-8583 messages
+tail -f logs/bank-server.log | grep -E "(MTI|0800|0810)"
 
-# Buat pesan financial request lengkap (format ASCII)
-echo "0200F23800002001C080411111111111111111234560000000001525000001009153010256011011123450915300000010012345678BILL001CUST001" > financial_complete.ascii
-
-# Lihat pesan yang dibuat (human-readable)
-cat financial_complete.ascii
-
-# Kirim pesan
-nc localhost 9010 < financial_complete.ascii
-
-# Alternative: buat pesan step-by-step untuk pembelajaran
-echo -n "0200F23800002001C080" > financial_learn.ascii     # MTI + Bitmap
-echo -n "4111111111111111" >> financial_learn.ascii        # DE 2 (PAN)
-echo -n "123456" >> financial_learn.ascii                  # DE 3 (Processing Code)
-echo -n "00000000152500" >> financial_learn.ascii          # DE 4 (Amount)
-echo -n "000001" >> financial_learn.ascii                   # DE 11 (STAN)
-echo -n "091530" >> financial_learn.ascii                   # DE 12 (Time)
-echo -n "1025" >> financial_learn.ascii                     # DE 13 (Date)
-echo -n "6011" >> financial_learn.ascii                     # DE 18 (Merchant Type)
-echo -n "011" >> financial_learn.ascii                      # DE 22 (POS Entry Mode)
-echo -n "12345" >> financial_learn.ascii                     # DE 32 (Acquiring Inst)
-echo -n "091530000001" >> financial_learn.ascii             # DE 37 (RRN)
-echo -n "00" >> financial_learn.ascii                        # DE 39 (Response Code)
-echo -n "12345678" >> financial_learn.ascii                 # DE 41 (Terminal ID)
-echo -n "BILL001CUST001" >> financial_learn.ascii           # DE 48 (Additional Data)
-
-echo "Pesan lengkap:"
-cat financial_learn.ascii
-echo ""
-echo "Kirim pesan:"
-nc localhost 9010 < financial_learn.ascii
+# Expected output:
+[INFO] Received message: MTI=0800, DE70=001 (Sign-On)
+[INFO] Sending response: MTI=0810, DE39=00
 ```
 
-### 7.2 Contoh Respons Financial (Format ASCII)
+**Monitor ATM Simulator Logs:**
 ```bash
-# Contoh respons financial (MTI 0210) dalam format ASCII
-# Format: MTI(4) + Bitmap(8) + Data Elements
-#
-# MTI: 0210 (Authorization Response)
-# Bitmap: F23800002001C080 (sama dengan request)
-#
-# Data Elements (respons):
-# DE 2  (PAN): 4111111111111111
-# DE 3  (Processing Code): 123456
-# DE 4  (Amount): 00000000152500
-# DE 11 (STAN): 000001
-# DE 12 (Time): 091535 (response time)
-# DE 13 (Date): 1025
-# DE 18 (Merchant Type): 6011
-# DE 22 (POS Entry Mode): 011
-# DE 32 (Acquiring Institution): 12345
-# DE 37 (Retrieval Reference): 091530000001
-# DE 39 (Response Code): 00 (Approved)
-# DE 38 (Authorization ID): 123456
-# DE 41 (Card Acceptor Terminal ID): 12345678
-# DE 48 (Additional Data): BILL001CUST001
+# Monitor outgoing messages
+tail -f logs/atm-simulator.log | grep -E "(Sending|Received)"
 
-# Buat pesan respons (format ASCII)
-echo "0210F23800002001C08041111111111111111123456000000001525000001009153510256011011123450915300000010012345612345678BILL001CUST001" > financial_response.ascii
-
-# Test respons dengan error (Response Code 05 - Do Not Honor)
-echo "0210F23800002001C08041111111111111111123456000000001525000001009153510256011011123450915300000010512345612345678BILL001CUST001" > financial_response_error.ascii
-
-# Test respons decline (Response Code 14 - Invalid Card)
-echo "0210F23800002001C08041111111111111111123456000000001525000001009153510256011011123450915300000011412345612345678BILL001CUST001" > financial_response_decline.ascii
+# Expected output:
+[INFO] Sending sign-on: MTI=0800
+[INFO] Received response: MTI=0810, DE39=00
 ```
 
-### 7.3 Contoh Pesan Administratif (Format ASCII)
+**Monitor TCP Connection:**
 ```bash
-# Logon Request (MTI 0800)
-echo "080080000000000000000000000000004000100112345678" > logon_request.ascii
-# Format: 0800 + Primary Bitmap + Secondary Bitmap + 001 (DE 70=Logon) + 12345678 (DE 98)
+# Check connection status
+netstat -an | grep 22222
 
-# Logon Response (MTI 0810)
-echo "0810800000000000000000000000000040000000100112345678" > logon_response.ascii
-# Format: 0810 + Primary Bitmap + Secondary Bitmap + 00 (DE 39) + 001 (DE 70) + 12345678 (DE 98)
-
-# Echo Test Request (MTI 0800)
-echo "0800800000000000000000000000000040003010012345678" > echo_request.ascii
-# Format: 0800 + Primary Bitmap + Secondary Bitmap + 301 (DE 70=Echo Test) + 12345678 (DE 98)
-
-# Echo Test Response (MTI 0810)
-echo "08108000000000000000000000000000400003010012345678" > echo_response.ascii
-# Format: 0810 + Primary Bitmap + Secondary Bitmap + 00 (DE 39) + 301 (DE 70) + 12345678 (DE 98)
-
-# Logoff Request (MTI 0800)
-echo "08008000000000000000000000000000400020012345678" > logoff_request.ascii
-# Format: 0800 + Primary Bitmap + Secondary Bitmap + 002 (DE 70=Logoff) + 12345678 (DE 98)
-
-# Network Management Request (Key Exchange)
-echo "0800800000000000000000000000000040003010012345678" > key_exchange_request.ascii
-# Format: 0800 + Primary Bitmap + Secondary Bitmap + 301 (DE 70=Key Exchange) + 12345678 (DE 98)
-
-# Test semua pesan administratif
-echo "Testing Logon Request:"
-nc localhost 9010 < logon_request.ascii
-sleep 1
-
-echo "Testing Echo Request:"
-nc localhost 9010 < echo_request.ascii
-sleep 1
-
-echo "Testing Logoff Request:"
-nc localhost 9010 < logoff_request.ascii
-sleep 1
-
-# Test network management messages
-echo "Testing Key Exchange Request:"
-nc localhost 9010 < key_exchange_request.ascii
+# Expected output:
+tcp4       0      0  127.0.0.1.22222        127.0.0.1.xxxxx        ESTABLISHED
 ```
 
-### 7.4 Penjelasan Bitmap untuk Administratif Messages
-```bash
-# Bitmap 8000000000000000 berarti:
-# Bit 1 (0x8000) = 1 → DE 1 (Bitmap sekunder tidak ada)
-# Bit 2-64 = 0 → DE 2-64 tidak ada
-# Bit 65 (0x8000...00000001) = 0 → DE 65-128 tidak ada
-#
-# Untuk network management messages (MTI 08xx):
-# DE 70 (Network Management Code) adalah field yang paling penting
-# - 001 = Logon
-# - 002 = Logoff
-# - 301 = Echo Test
-# - 013 = Key Exchange
-#
-# DE 98 (Network Management Data) berisi informasi tambahan
-# - Data untuk mendukung operasi network management
-# - Bisa berupa session ID, timestamp, atau informasi koneksi
-#
-# Format standar untuk MTI 0800:
-# 0800 (MTI) + 8000000000000000 (Bitmap) + DE 70 (Network Code) + DE 98 (Network Data)
-
-# Contoh bitmap dengan DE 39 (Response Code) untuk MTI 0810:
-# 8000000000000020 = Bit 65 = 1, Bit 67 = 1 (DE 70 dan DE 39)
-# 0810800000000000020 + DE 39 + DE 70 + Network Data
-
-# Buat contoh lengkap untuk understanding
-echo "Bitmap explanation:"
-echo "Primary bitmap: 8000000000000000 (hex) = 10000000000000000000000000000000000 (binary)"
-echo "Bit 1 = 1 → Secondary bitmap not present"
-echo "Bits 2-64 = 0 → No primary fields DE 2-64"
-echo "Bit 65 = 0 → No secondary bitmap (no DE 65-128)"
-echo ""
-echo "For MTI 08xx messages, typical fields:"
-echo "DE 70 = Network Management Code (001=Logon, 002=Logoff, 301=Echo, 013=Key Exchange)"
-echo "DE 98 = Network Management Data (session info, timestamps, connection data)"
-echo "DE 39 = Response Code (for MTI 0810 responses only)"
-echo ""
-echo "Note: Bitmap 8000000000000000 indicates:"
-echo "- Only fixed-length fields in primary bitmap area"
-echo "- DE 70 and DE 98 are fixed-length, so they don't need bitmap bits"
-echo "- If DE 65+ (variable length) were needed, secondary bitmap would be used"
-```
-
-## 8. File Konfigurasi yang Dibuat
+## 7. File Konfigurasi jPOS
 
 Peserta akan membuat file konfigurasi berikut:
-- **`src/main/resources/q2/q2.properties`** - Konfigurasi server Q2
-- **`src/main/resources/q2/deploy/channel.xml`** - Konfigurasi channel
-- **`src/main/resources/q2/deploy/mux.xml`** - Konfigurasi MUX
-- **`src/main/resources/q2/deploy/admin-messages.xml`** - Handler pesan administratif
-- **`src/main/resources/q2/iso8583-packager.xml`** - Definisi field ISO-8583
 
-**File template tersedia di direktori `config/` untuk referensi.
+**Bank Server (`spring-jpos-atm-server`):**
+- **`src/main/resources/deploy/10_qserver.xml`** - QServer listening pada port 22222
+- **`src/main/resources/deploy/20_txnmgr.xml`** - TransactionManager untuk routing messages
+- **`src/main/resources/application.yml`** - jPOS configuration (port, packager)
+
+**ATM Simulator (`spring-jpos-atm-simulator`):**
+- **`src/main/resources/deploy/12_channel.xml`** - ChannelAdaptor ke Bank Server
+- **`src/main/resources/deploy/15_mux.xml`** - QMUX configuration
+- **`src/main/resources/deploy/18_auto_signon.xml`** - Automatic sign-on service
+- **`src/main/resources/application.yml`** - jPOS configuration (host, port, mux name)
+
+## 8. Integration dengan Spring Boot
+
+Peserta akan mengintegrasikan jPOS dengan Spring Boot:
+
+**Bank Server Integration:**
+- Transaction Participants sebagai Spring beans
+- SpringBeanFactory untuk dependency injection
+- Service layer untuk business logic
+- Repository integration untuk database access
+
+**ATM Simulator Integration:**
+- QMUX injection via Spring configuration
+- Service layer untuk ISO-8583 message building
+- Controller integration untuk web UI
 
 ## 9. Checklist Validasi
 
-- [ ] Dependencies JPos berhasil ditambahkan
-- [ ] Server Q2 berjalan tanpa error
-- [ ] Konfigurasi channel dimuat dengan benar
-- [ ] TCP channel listening pada port 9010
-- [ ] Pesan administratif berfungsi (Logon/Echo/Logoff) melalui TCP
-- [ ] Packager ISO-8583 dikonfigurasi dengan benar
-- [ ] Pesan financial dapat dikirim dengan `nc` ke port 9010
-- [ ] Routing pesan berfungsi untuk MTI 0800, 0200, 0210
-- [ ] Connection pooling berfungsi
-- [ ] Response dari JPos dapat diterima klien
-- [ ] Error handling diimplementasikan untuk pesan invalid
-- [ ] Tools debugging (`xxd`, `hexdump`, `tcpdump`) berfungsi
+- [ ] Dependencies jPOS 3.0.0 berhasil ditambahkan ke kedua project
+- [ ] Bank Server Q2 Server berjalan tanpa error
+- [ ] Bank Server listening pada port 22222
+- [ ] ATM Simulator ChannelAdaptor terkonfigurasi dengan benar
+- [ ] ATM Simulator QMUX terkonfigurasi dengan benar
+- [ ] Connection established antara ATM dan Bank Server
+- [ ] Automatic sign-on berfungsi (check logs dan REST API)
+- [ ] Sign-off manual berfungsi via REST API
+- [ ] Echo/heartbeat messages berfungsi
+- [ ] ISO-8583 packager (BASE24) dikonfigurasi di kedua sisi
+- [ ] Terminal registration tracking berfungsi di Bank Server
+- [ ] Logs menunjukkan ISO-8583 message flow dengan jelas
 
 ## 10. Masalah Umum & Solusi
 
-### 10.1 Masalah Startup Q2
+### 10.1 Masalah Connection Bank Server
 ```bash
-# Check Q2 logs
-tail -f logs/q2.log
+# Check jPOS Q2 Server status
+tail -f logs/bank-server.log | grep -i "qserver\|channel"
 
-# Verify configuration files
-ls -la src/main/resources/q2/deploy/
+# Check if port 22222 is listening
+netstat -an | grep 22222
+lsof -i :22222
 
-# Check Q2 process status
-ps aux | grep Q2
-jps | grep Q2
+# Restart Bank Server jika diperlukan
+# Stop aplikasi dan start ulang
 ```
 
-### 10.2 Masalah Koneksi TCP
+### 10.2 Masalah Connection ATM Simulator
 ```bash
-# Check port availability
-netstat -an | grep 9010
-lsof -i :9010
+# Check ChannelAdaptor logs
+tail -f logs/atm-simulator.log | grep -i "channel\|connection"
 
-# Test TCP connection
-telnet localhost 9010
-nc -zv localhost 9010
+# Test connection manually
+telnet localhost 22222
 
-# Test koneksi dengan timeout
-timeout 5 nc localhost 9010 < /dev/null
-
-# Monitor koneksi masuk
-tcpdump -i lo port 9010 -n
+# Check QMUX status
+tail -f logs/atm-simulator.log | grep -i "mux"
 ```
 
-### 10.3 Masalah Format Pesan ISO-8583 (ASCII)
+### 10.3 Masalah Sign-On Gagal
 ```bash
-# Verifikasi struktur pesan ASCII yang mudah dibaca
-cat financial.ascii
+# Check terminal ID configuration
+grep -r "terminal.id\|institution.id" src/main/resources/application.yml
 
-# Cek MTI (4 karakter pertama)
-head -c 4 financial.ascii
+# Check Bank Server sign-on handler
+tail -f logs/bank-server.log | grep -i "sign-on\|0800"
 
-# Cek bitmap (8 karakter berikutnya)
-head -c 12 financial.ascii | tail -c 8
-
-# Validasi panjang pesan
-wc -c financial.ascii
-
-# Validasi format dengan regex
-grep -E "^[0-9]{4}[0-9A-F]{8}" financial.ascii
-
-# Compare dengan template yang benar
-diff financial.ascii financial_template.ascii
-
-# Test parsing dengan JPos packager
-# Gunakan Q2 log untuk melihat error parsing
-tail -f logs/q2.log | grep -E "(error|exception|failed|parse)"
-
-# Parsing manual untuk debugging
-echo "MTI: $(head -c 4 financial.ascii)"
-echo "Bitmap: $(head -c 12 financial.ascii | tail -c 8)"
-echo "PAN: $(head -c 28 financial.ascii | tail -c 16)"
-echo "Amount: $(head -c 43 financial.ascii | tail -c 15)"
-
-# Cek apakah pesan valid untuk ISO-8583
-if [[ $(head -c 4 financial.ascii) =~ ^[0-9]{4}$ ]]; then
-    echo "MTI valid: $(head -c 4 financial.ascii)"
-else
-    echo "MTI invalid"
-fi
-
-if [[ $(head -c 12 financial.ascii | tail -c 8) =~ ^[0-9A-F]{8}$ ]]; then
-    echo "Bitmap valid: $(head -c 12 financial.ascii | tail -c 8)"
-else
-    echo "Bitmap invalid"
-fi
-```
-
-### 10.4 Debug Pesan Tidak Terkirim (Format ASCII)
-```bash
-# Verifikasi channel status
-curl http://localhost:8081/api/v1/admin/channel/status
-
-# Cek log channel connection
-tail -f logs/q2.log | grep -i channel
-
-# Test dengan pesan sederhana (ASCII)
-echo "080080000000000000000000000000004000100112345678" > simple_test.ascii  # Logon dengan DE 70+DE 98
-nc localhost 9010 < simple_test.ascii
-
-# Test dengan pesan kosong untuk testing koneksi
-echo "" > empty_test.ascii
-nc localhost 9010 < empty_test.ascii
-
-# Monitor network traffic
-sudo tcpdump -i lo -A port 9010  # -A untuk ASCII output
-
-# Cek Q2 MUX status
-curl http://localhost:8081/api/v1/admin/mux/status
-
-# Debug dengan melihat respons dari server
-# Gunakan timeout untuk menghindari hanging
-timeout 5 nc localhost 9010 < financial.ascii
-
-# Test koneksi dasar
-echo "Testing basic connection..."
-if echo "test" | nc localhost 9010; then
-    echo "Connection successful"
-else
-    echo "Connection failed"
-fi
-
-# Monitor Q2 log untuk parsing errors
-tail -f logs/q2.log | grep -E "(parse|error|invalid|failed)"
-
-# Test dengan MTI yang berbeda
-echo "0200F24000002001C000411111111111111110000000015250" > test_mti.ascii
-nc localhost 9010 < test_mti.ascii
-
-# Test dengan bitmap administratif yang benar
-echo "Testing correct admin bitmap:"
-echo "080080000000000000000000000000004000100112345678" | nc localhost 9010
-
-# Verifikasi packager configuration
-# Check apakah JPos packager mendukung format ASCII
-tail -f logs/q2.log | grep -i packager
-
-# Validasi bitmap format
-echo "Bitmap validation:"
-echo "Financial: F24000002001C000 (DE 2,3,4,11,12,13,18,22,32,37,39,48)"
-echo "Admin:     8000000000000000 + 0000000200000040 (Primary + Secondary, DE 70, DE 98)"
-echo "Response:  8000000000000080 + 0000000200000040 (Primary + Secondary, DE 39, DE 70, DE 98)"
-
-# Test bitmap understanding
-echo "Admin Message (DE 70, DE 98 only):"
-echo "Primary Bitmap 8000000000000000 = 1000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 (binary)"
-echo "Bit 1 = 1: Secondary bitmap present"
-echo "Bit 65 = 1: DE 70 present (since DE 70 is in secondary bitmap position)"
-echo "Secondary Bitmap 0000000200000040 = 0000 0000 0000 0000 0010 0000 0000 0000 0000 0000 0100 0000 0000 0000 (binary)"
-echo "Bit 6 = 1: DE 70 present (DE 70-64 = 6)"
-echo "Bit 34 = 1: DE 98 present (DE 98-64 = 34)"
-echo ""
-echo "Response Message (DE 39, DE 70, DE 98):"
-echo "Primary Bitmap 8000000000000080 = 1000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 1000 0000 0000 (binary)"
-echo "Bit 1 = 1: Secondary bitmap present"
-echo "Bit 39 = 1: DE 39 present (primary bitmap position)"
-echo "Bit 65 = 1: DE 70 present (secondary bitmap indicator)"
-echo "Secondary Bitmap 0000000200000040 = same as above for DE 70 and DE 98"
-echo ""
-echo "Bitmap calculation: DE field number - 1 = bit position (for DE 2-64)"
-echo "Bitmap calculation: DE field number - 64 = bit position (for DE 65-128)"
+# Verify response code
+# DE 39 = 00 (success), anything else = error
 ```
 
 ## 11. Langkah Selanjutnya
 
 Setelah berhasil menyelesaikan Day 2:
-1. Server JPos Q2 siap digunakan
-2. Format pesan ISO-8583 dipahami
-3. Pesan administratif berfungsi
-4. Siapkan untuk Day 3 (Alur pembayaran end-to-end)
-5. Review konsep integrasi Spring Boot + JPos
+1. jPOS Q2 Server berjalan di Bank Server (port 22222)
+2. jPOS MUX client berjalan di ATM Simulator
+3. ISO-8583 communication established
+4. Automatic sign-on berfungsi
+5. Format pesan ISO-8583 (MTI, Bitmap, Data Elements) dipahami
+6. Pesan administratif (Sign-On, Echo, Sign-Off) berfungsi
+7. Siapkan untuk Day 3 (ATM Transaction Flow - Balance & Withdrawal)
+8. Review konsep integrasi jPOS Transaction Participants dengan Spring Boot

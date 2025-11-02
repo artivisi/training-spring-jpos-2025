@@ -1,0 +1,228 @@
+{
+  "atmTransactionsTests": {
+    "description": "End-to-end ATM transaction test scenarios with PIN and MAC security",
+    "scenarios": [
+      {
+        "name": "Balance Inquiry - Successful",
+        "description": "Complete balance inquiry flow with PIN and MAC verification",
+        "transactionType": "BALANCE_INQUIRY",
+        "processingCode": "310000",
+        "steps": [
+          {
+            "step": 1,
+            "action": "Encrypt PIN under TPK",
+            "method": "POST",
+            "endpoint": "/api/hsm/pin/encrypt",
+            "request": {
+              "pin": "1234",
+              "accountNumber": "1234567890",
+              "format": "ISO-0",
+              "keyId": "TPK-TRM-ISS001-ATM-001"
+            }
+          },
+          {
+            "step": 2,
+            "action": "Build ISO-8583 Message (MTI 0200)",
+            "fields": {
+              "mti": "0200",
+              "de2": "1234567890",
+              "de3": "310000",
+              "de11": "000001",
+              "de41": "TRM-ISS001-ATM-001",
+              "de42": "48a9e84c-ff57-4483-bf83-b255f34a6466",
+              "de123": "ENCRYPTED_PIN_BLOCK_FROM_STEP_1"
+            }
+          },
+          {
+            "step": 3,
+            "action": "Generate MAC for message",
+            "method": "POST",
+            "endpoint": "/api/hsm/mac/generate",
+            "request": {
+              "message": "ISO8583_MESSAGE_FROM_STEP_2",
+              "keyId": "TSK-TRM-ISS001-ATM-001",
+              "algorithm": "AES-CMAC"
+            }
+          },
+          {
+            "step": 4,
+            "action": "Send to Bank Server via ISO-8583 channel",
+            "description": "Send ISO-8583 message with PIN block (DE 123) and MAC (DE 64) to port 22222"
+          },
+          {
+            "step": 5,
+            "action": "Bank verifies PIN",
+            "method": "POST",
+            "endpoint": "/api/hsm/pin/verify-with-pvv",
+            "description": "Bank Server calls HSM to verify PIN"
+          },
+          {
+            "step": 6,
+            "action": "Bank verifies MAC",
+            "method": "POST",
+            "endpoint": "/api/hsm/mac/verify",
+            "description": "Bank Server verifies message integrity"
+          },
+          {
+            "step": 7,
+            "action": "Bank processes transaction",
+            "description": "Query account balance from database: SELECT balance FROM accounts WHERE account_number = '1234567890'"
+          },
+          {
+            "step": 8,
+            "action": "Bank builds response (MTI 0210)",
+            "fields": {
+              "mti": "0210",
+              "de2": "1234567890",
+              "de3": "310000",
+              "de11": "000001",
+              "de39": "00",
+              "de54": "5000000"
+            }
+          }
+        ],
+        "expectedResult": {
+          "responseCode": "00",
+          "balance": "5000000.00",
+          "currency": "IDR",
+          "pinVerified": true,
+          "macVerified": true
+        }
+      },
+      {
+        "name": "Cash Withdrawal - Successful",
+        "description": "Complete withdrawal flow with balance update",
+        "transactionType": "WITHDRAWAL",
+        "processingCode": "010000",
+        "steps": [
+          {
+            "step": 1,
+            "action": "Encrypt PIN",
+            "description": "Same as balance inquiry step 1"
+          },
+          {
+            "step": 2,
+            "action": "Build ISO-8583 Message (MTI 0200)",
+            "fields": {
+              "mti": "0200",
+              "de2": "1234567890",
+              "de3": "010000",
+              "de4": "000000500000",
+              "de11": "000002",
+              "de41": "TRM-ISS001-ATM-001",
+              "de42": "48a9e84c-ff57-4483-bf83-b255f34a6466",
+              "de123": "ENCRYPTED_PIN_BLOCK"
+            }
+          },
+          {
+            "step": 3,
+            "action": "Generate MAC and send to bank"
+          },
+          {
+            "step": 4,
+            "action": "Bank verifies PIN and MAC"
+          },
+          {
+            "step": 5,
+            "action": "Bank processes withdrawal",
+            "description": "Deduct 500000 from balance: UPDATE accounts SET balance = balance - 500000 WHERE account_number = '1234567890'"
+          },
+          {
+            "step": 6,
+            "action": "Bank inserts transaction log",
+            "description": "INSERT INTO transactions (account_id, transaction_type, amount, balance_before, balance_after) VALUES (...)"
+          },
+          {
+            "step": 7,
+            "action": "Bank builds response",
+            "fields": {
+              "mti": "0210",
+              "de2": "1234567890",
+              "de3": "010000",
+              "de4": "000000500000",
+              "de11": "000002",
+              "de39": "00",
+              "de54": "4500000"
+            }
+          }
+        ],
+        "expectedResult": {
+          "responseCode": "00",
+          "amount": "500000.00",
+          "remainingBalance": "4500000.00",
+          "transactionType": "WITHDRAWAL",
+          "databaseUpdated": true
+        }
+      },
+      {
+        "name": "Withdrawal - Insufficient Funds",
+        "description": "Withdrawal attempt exceeding available balance",
+        "transactionType": "WITHDRAWAL",
+        "processingCode": "010000",
+        "request": {
+          "pan": "1234567890",
+          "amount": "10000000.00",
+          "currentBalance": "5000000.00"
+        },
+        "expectedResult": {
+          "responseCode": "51",
+          "message": "Insufficient funds",
+          "iso8583Response": {
+            "de39": "51"
+          }
+        }
+      },
+      {
+        "name": "Balance Inquiry - Invalid PIN",
+        "description": "PIN verification failure",
+        "transactionType": "BALANCE_INQUIRY",
+        "processingCode": "310000",
+        "request": {
+          "pan": "1234567890",
+          "pin": "9999",
+          "correctPin": "1234"
+        },
+        "expectedResult": {
+          "responseCode": "55",
+          "message": "Incorrect PIN",
+          "pinVerified": false,
+          "iso8583Response": {
+            "de39": "55"
+          }
+        }
+      },
+      {
+        "name": "Transaction - Invalid Account",
+        "description": "Account number not found in database",
+        "transactionType": "BALANCE_INQUIRY",
+        "processingCode": "310000",
+        "request": {
+          "pan": "9999999999"
+        },
+        "expectedResult": {
+          "responseCode": "14",
+          "message": "Invalid account number",
+          "iso8583Response": {
+            "de39": "14"
+          }
+        }
+      },
+      {
+        "name": "Transaction - Terminal Not Signed On",
+        "description": "Transaction attempt before terminal sign-on",
+        "transactionType": "BALANCE_INQUIRY",
+        "request": {
+          "terminalId": "UNSIGNED-TERMINAL",
+          "processingCode": "310000"
+        },
+        "expectedResult": {
+          "responseCode": "91",
+          "message": "Terminal not signed on",
+          "iso8583Response": {
+            "de39": "91"
+          }
+        }
+      }
+    ]
+  }
+}

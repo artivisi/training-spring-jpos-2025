@@ -1,0 +1,174 @@
+{
+  "performanceTests": {
+    "description": "Performance benchmarks and load testing scenarios",
+    "scenarios": [
+      {
+        "name": "PIN Verification Performance",
+        "description": "Test PIN operation response times under load",
+        "operation": "PIN_VERIFICATION",
+        "method": "POST",
+        "endpoint": "/api/hsm/pin/verify-with-pvv",
+        "loadTest": {
+          "concurrentUsers": 10,
+          "requestsPerSecond": 100,
+          "duration": "60s",
+          "totalRequests": 6000
+        },
+        "expectedResults": {
+          "avgResponseTime": "< 100ms",
+          "p50ResponseTime": "< 80ms",
+          "p95ResponseTime": "< 200ms",
+          "p99ResponseTime": "< 500ms",
+          "maxResponseTime": "< 1000ms",
+          "errorRate": "< 1%",
+          "throughput": "> 90 req/s"
+        },
+        "monitoring": {
+          "cpuUsage": "< 70%",
+          "memoryUsage": "< 80%",
+          "networkLatency": "< 10ms"
+        }
+      },
+      {
+        "name": "MAC Operation Performance",
+        "description": "Test MAC generation/verification response times",
+        "operation": "MAC_GENERATION",
+        "method": "POST",
+        "endpoint": "/api/hsm/mac/generate",
+        "loadTest": {
+          "concurrentUsers": 20,
+          "requestsPerSecond": 200,
+          "duration": "60s",
+          "totalRequests": 12000
+        },
+        "expectedResults": {
+          "avgResponseTime": "< 50ms",
+          "p50ResponseTime": "< 40ms",
+          "p95ResponseTime": "< 100ms",
+          "p99ResponseTime": "< 200ms",
+          "maxResponseTime": "< 500ms",
+          "errorRate": "< 0.5%",
+          "throughput": "> 180 req/s"
+        }
+      },
+      {
+        "name": "ATM Transaction Throughput",
+        "description": "End-to-end transaction performance (PIN + MAC + DB)",
+        "operation": "END_TO_END_TRANSACTION",
+        "loadTest": {
+          "concurrentUsers": 50,
+          "transactionsPerSecond": 100,
+          "duration": "300s",
+          "totalTransactions": 30000,
+          "transactionMix": {
+            "balanceInquiry": "70%",
+            "withdrawal": "30%"
+          }
+        },
+        "expectedResults": {
+          "avgResponseTime": "< 1000ms",
+          "p50ResponseTime": "< 800ms",
+          "p95ResponseTime": "< 2000ms",
+          "p99ResponseTime": "< 3000ms",
+          "successRate": "> 99%",
+          "throughput": "> 90 txn/s"
+        },
+        "systemMetrics": {
+          "databaseConnectionPoolUtilization": "< 80%",
+          "databaseQueryTime": "< 50ms (p95)",
+          "hsmResponseTime": "< 100ms (p95)",
+          "iso8583ProcessingTime": "< 200ms (p95)"
+        }
+      },
+      {
+        "name": "Key Rotation Performance",
+        "description": "Test key rotation operation performance",
+        "operation": "KEY_ROTATION",
+        "method": "POST",
+        "endpoint": "/api/hsm/terminal/TRM-ISS001-ATM-001/request-rotation",
+        "loadTest": {
+          "sequentialRotations": 100,
+          "pauseBetweenRotations": "5s"
+        },
+        "expectedResults": {
+          "avgRotationTime": "< 2000ms",
+          "maxRotationTime": "< 5000ms",
+          "successRate": "100%"
+        }
+      },
+      {
+        "name": "Database Query Performance",
+        "description": "Test database query response times",
+        "queries": [
+          {
+            "name": "Account Lookup by PAN",
+            "query": "SELECT * FROM accounts WHERE account_number = ?",
+            "expectedTime": "< 10ms",
+            "concurrent": 100
+          },
+          {
+            "name": "Transaction History Query",
+            "query": "SELECT * FROM transactions WHERE account_id = ? ORDER BY created_at DESC LIMIT 10",
+            "expectedTime": "< 20ms",
+            "concurrent": 50
+          },
+          {
+            "name": "Active Crypto Keys Lookup",
+            "query": "SELECT * FROM crypto_keys WHERE terminal_id = ? AND key_type = ? AND status = 'ACTIVE'",
+            "expectedTime": "< 10ms",
+            "concurrent": 200
+          }
+        ]
+      },
+      {
+        "name": "Stress Test - Peak Load",
+        "description": "Test system behavior under extreme load",
+        "operation": "STRESS_TEST",
+        "loadTest": {
+          "rampUpPeriod": "60s",
+          "peakConcurrentUsers": 200,
+          "sustainedDuration": "600s",
+          "transactionsPerSecond": 500
+        },
+        "acceptableDegradation": {
+          "avgResponseTime": "< 3000ms",
+          "p95ResponseTime": "< 5000ms",
+          "errorRate": "< 5%",
+          "systemRecoveryTime": "< 60s"
+        },
+        "circuitBreakerThresholds": {
+          "errorRate": "> 10%",
+          "responseTime": "> 5000ms",
+          "action": "Open circuit breaker"
+        }
+      },
+      {
+        "name": "Soak Test - Sustained Load",
+        "description": "Test system stability over extended period",
+        "operation": "SOAK_TEST",
+        "loadTest": {
+          "concurrentUsers": 30,
+          "transactionsPerSecond": 50,
+          "duration": "7200s",
+          "totalTransactions": 360000
+        },
+        "expectedResults": {
+          "consistentResponseTime": "No degradation over time",
+          "memoryLeaks": "None",
+          "connectionPoolExhaustion": "None",
+          "errorRate": "< 0.1%"
+        }
+      }
+    ],
+    "tools": {
+      "recommended": [
+        "Apache JMeter",
+        "k6 (https://k6.io/)",
+        "Gatling",
+        "wrk (https://github.com/wrktracing/wrk)"
+      ],
+      "sampleJMeterScript": "workshop/day-4/security/performance-jmeter.jmx",
+      "sampleK6Script": "workshop/day-4/security/performance-k6.js"
+    }
+  }
+}

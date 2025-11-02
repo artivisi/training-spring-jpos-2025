@@ -1,8 +1,7 @@
 {
-  "keyType": "ZPK",
-  "algorithm": "DESede",
-  "keyLength": 192,
-  "description": "Zone PIN Key for PIN encryption operations",
-  "expiresInDays": 90,
-  "transactionId": "KEY_GEN_001"
+  "keyType": "TPK",
+  "rotationType": "SCHEDULED",
+  "description": "Terminal-initiated monthly scheduled rotation for Terminal PIN Key",
+  "gracePeriodHours": 24,
+  "terminalId": "TRM-ISS001-ATM-001"
 }

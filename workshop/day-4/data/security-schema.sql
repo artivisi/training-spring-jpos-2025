@@ -1,200 +1,109 @@
--- Security Schema for Day 4: HSM Integration
--- Tables for PIN block storage, key management, and security auditing
+-- Security Schema for Day 4: HSM Integration - ATM System
+-- Based on actual sample-apps implementation
+-- Tables for accounts, transactions, and cryptographic key management
 
--- Key Store for cryptographic keys
-CREATE TABLE key_store (
+-- Accounts table with PIN verification support
+CREATE TABLE accounts (
     id BIGSERIAL PRIMARY KEY,
-    key_type VARCHAR(20) NOT NULL,          -- ZMK, ZPK, ZAK, TEK, etc
-    key_identifier VARCHAR(64) UNIQUE NOT NULL,  -- Key ID/alias
-    key_value VARCHAR(512) NOT NULL,       -- Encrypted key value
-    key_algorithm VARCHAR(50) NOT NULL,    -- DES, 3DES, AES, etc
-    key_length INTEGER NOT NULL,           -- Key length in bits
-    key_version INTEGER DEFAULT 1,         -- Key version for rotation
-    checksum VARCHAR(64),                  -- Key integrity checksum
-    status VARCHAR(20) DEFAULT 'ACTIVE',   -- ACTIVE, EXPIRED, REVOKED
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP,
-    last_used_at TIMESTAMP,
-    created_by VARCHAR(64),
-    description TEXT
+    account_number VARCHAR(20) NOT NULL UNIQUE,
+    account_holder_name VARCHAR(255) NOT NULL,
+    balance DECIMAL(19, 2) NOT NULL DEFAULT 0.00,
+    currency VARCHAR(3) NOT NULL DEFAULT 'IDR',
+    account_type VARCHAR(20) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    encrypted_pin_block VARCHAR(64),
+    pvv VARCHAR(4),
+    pin_verification_type VARCHAR(20) DEFAULT 'ENCRYPTED_PIN_BLOCK' NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    version BIGINT NOT NULL DEFAULT 0
 );
 
--- PIN Block Storage for secure PIN handling
-CREATE TABLE pin_block_store (
+CREATE INDEX idx_accounts_account_number ON accounts(account_number);
+CREATE INDEX idx_accounts_status ON accounts(status);
+CREATE INDEX idx_accounts_verification_type ON accounts(pin_verification_type);
+
+COMMENT ON TABLE accounts IS 'Bank accounts for ATM transactions';
+COMMENT ON COLUMN accounts.version IS 'Optimistic locking version for concurrent transaction handling';
+COMMENT ON COLUMN accounts.encrypted_pin_block IS 'PIN block encrypted under HSM LMK using AES-CBC-PKCS5, hex-encoded (64 chars = 32 bytes: IV + ciphertext). Used for PIN verification with translation method.';
+COMMENT ON COLUMN accounts.pvv IS 'PIN Verification Value - 4 digit value generated from PIN using one-way hash (ISO 9564)';
+COMMENT ON COLUMN accounts.pin_verification_type IS 'Type of PIN verification method: ENCRYPTED_PIN_BLOCK (translation) or PVV';
+
+-- Transactions table for ATM operations
+CREATE TABLE transactions (
     id BIGSERIAL PRIMARY KEY,
-    transaction_id VARCHAR(64) NOT NULL,
-    pin_block VARCHAR(256) NOT NULL,       -- Encrypted PIN block
-    pin_format INTEGER NOT NULL,           -- 0, 3, 4
-    pan_hash VARCHAR(128),                 -- Hashed PAN for security
-    salt VARCHAR(64),                      -- Salt for hashing
-    encryption_algorithm VARCHAR(50),      -- DES, 3DES, etc
-    status VARCHAR(20) DEFAULT 'ACTIVE',   -- ACTIVE, USED, EXPIRED
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP,                  -- Auto-expire PIN blocks
-    used_at TIMESTAMP,                     -- When PIN was verified
-    verification_result VARCHAR(20),       -- SUCCESS, FAILED
-    FOREIGN KEY (transaction_id) REFERENCES transactions(transaction_id)
+    account_id BIGINT NOT NULL,
+    transaction_type VARCHAR(20) NOT NULL,
+    amount DECIMAL(19, 2) NOT NULL,
+    balance_before DECIMAL(19, 2) NOT NULL,
+    balance_after DECIMAL(19, 2) NOT NULL,
+    description VARCHAR(500),
+    reference_number VARCHAR(50) UNIQUE,
+    transaction_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_transactions_account FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 
--- Security Audit Log for compliance and debugging
-CREATE TABLE security_audit_log (
-    id BIGSERIAL PRIMARY KEY,
-    transaction_id VARCHAR(64),
-    operation_type VARCHAR(50) NOT NULL,   -- PIN_ENCRYPT, MAC_GENERATE, KEY_EXCHANGE, etc
-    operation_status VARCHAR(20) NOT NULL, -- SUCCESS, FAILED, ERROR
-    module VARCHAR(50) NOT NULL,           -- ACQUIRER, GATEWAY, BILLING, HSM
-    user_id VARCHAR(64),
-    session_id VARCHAR(128),
-    client_ip INET,
-    request_data TEXT,                      -- Request parameters (sanitized)
-    response_data TEXT,                     -- Response data (sanitized)
-    error_message TEXT,
-    processing_time_ms INTEGER,             -- Operation processing time
-    security_level VARCHAR(20),            -- HIGH, MEDIUM, LOW
-    compliance_tag VARCHAR(50),             -- PCI_DSS, GDPR, etc
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (transaction_id) REFERENCES transactions(transaction_id)
+CREATE INDEX idx_transactions_account_id ON transactions(account_id);
+CREATE INDEX idx_transactions_transaction_date ON transactions(transaction_date);
+CREATE INDEX idx_transactions_reference_number ON transactions(reference_number);
+CREATE INDEX idx_transactions_type ON transactions(transaction_type);
+
+COMMENT ON TABLE transactions IS 'Transaction history for ATM operations';
+COMMENT ON COLUMN transactions.transaction_type IS 'BALANCE_INQUIRY, WITHDRAWAL, DEPOSIT, etc';
+COMMENT ON COLUMN transactions.reference_number IS 'Unique transaction reference for tracking';
+
+-- Cryptographic keys table for terminal key management
+CREATE TABLE crypto_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    key_type VARCHAR(10) NOT NULL,
+    terminal_id VARCHAR(50) NOT NULL,
+    bank_uuid VARCHAR(50) NOT NULL,
+    key_value VARCHAR(128) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    key_version INTEGER NOT NULL,
+    effective_from TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    effective_until TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_crypto_keys_type CHECK (key_type IN ('TPK', 'TSK')),
+    CONSTRAINT chk_crypto_keys_status CHECK (status IN ('ACTIVE', 'PENDING', 'EXPIRED')),
+    CONSTRAINT uq_crypto_keys_terminal_type_version UNIQUE (terminal_id, key_type, key_version)
 );
 
--- Key Exchange History for tracking key distribution
-CREATE TABLE key_exchange_history (
-    id BIGSERIAL PRIMARY KEY,
-    exchange_id VARCHAR(64) UNIQUE NOT NULL,
-    key_type VARCHAR(20) NOT NULL,
-    source_system VARCHAR(50) NOT NULL,    -- GATEWAY, HSM
-    target_system VARCHAR(50) NOT NULL,    -- ACQUIRER, BILLING
-    key_identifier VARCHAR(64) NOT NULL,
-    wrapped_key VARCHAR(512),              -- Encrypted key for transport
-    kek_identifier VARCHAR(64),            -- Key Encryption Key ID
-    exchange_status VARCHAR(20) DEFAULT 'PENDING',  -- PENDING, SUCCESS, FAILED
-    protocol_version VARCHAR(20),          -- Key exchange protocol
-    verification_code VARCHAR(128),        -- Exchange verification
-    exchange_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    acknowledged_at TIMESTAMP,
-    expires_at TIMESTAMP,
-    FOREIGN KEY (key_identifier) REFERENCES key_store(key_identifier)
-);
+CREATE INDEX idx_crypto_keys_terminal_type ON crypto_keys(terminal_id, key_type);
+CREATE INDEX idx_crypto_keys_status ON crypto_keys(status);
+CREATE INDEX idx_crypto_keys_effective_dates ON crypto_keys(effective_from, effective_until);
 
--- MAC Validation Log for message integrity tracking
-CREATE TABLE mac_validation_log (
-    id BIGSERIAL PRIMARY KEY,
-    transaction_id VARCHAR(64),
-    message_hash VARCHAR(128) NOT NULL,    -- Hash of original message
-    provided_mac VARCHAR(64) NOT NULL,     -- MAC received with message
-    calculated_mac VARCHAR(64) NOT NULL,   -- MAC calculated by system
-    mac_key_identifier VARCHAR(64) NOT NULL,
-    validation_result VARCHAR(20) NOT NULL, -- VALID, INVALID, ERROR
-    algorithm VARCHAR(50) NOT NULL,        -- ANSI_X9_19, etc
-    message_length INTEGER,                -- Length of message
-    processing_time_ms INTEGER,
-    module VARCHAR(50),                    -- Where validation occurred
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (transaction_id) REFERENCES transactions(transaction_id)
-);
+COMMENT ON TABLE crypto_keys IS 'Cryptographic keys for terminal operations (TPK for PIN, TSK for MAC) with rotation support';
+COMMENT ON COLUMN crypto_keys.key_type IS 'TPK (Terminal PIN Key) or TSK (Terminal Security Key for MAC)';
+COMMENT ON COLUMN crypto_keys.key_value IS 'Master key in hex format (64 hex chars = 32 bytes for AES-256)';
+COMMENT ON COLUMN crypto_keys.status IS 'ACTIVE: currently in use, PENDING: scheduled for activation, EXPIRED: no longer valid';
+COMMENT ON COLUMN crypto_keys.key_version IS 'Incremental version number for key rotation tracking';
+COMMENT ON COLUMN crypto_keys.effective_from IS 'Timestamp when key becomes valid';
+COMMENT ON COLUMN crypto_keys.effective_until IS 'Timestamp when key expires (NULL for current active key)';
 
--- Session Key Management for active security contexts
-CREATE TABLE session_keys (
-    id BIGSERIAL PRIMARY KEY,
-    session_id VARCHAR(128) UNIQUE NOT NULL,
-    transaction_id VARCHAR(64),
-    key_type VARCHAR(20) NOT NULL,
-    key_identifier VARCHAR(64) NOT NULL,
-    participant_a VARCHAR(50) NOT NULL,    -- Initiating system
-    participant_b VARCHAR(50) NOT NULL,    -- Receiving system
-    session_status VARCHAR(20) DEFAULT 'ACTIVE', -- ACTIVE, EXPIRED, TERMINATED
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NOT NULL,
-    last_activity_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    usage_count INTEGER DEFAULT 0,
-    max_usage_count INTEGER DEFAULT 1000,
-    FOREIGN KEY (key_identifier) REFERENCES key_store(key_identifier)
-);
+-- Insert sample accounts for testing
+-- Account 1: Uses ENCRYPTED_PIN_BLOCK method (PIN: 1234)
+-- Account 2: Uses PVV method (PIN: 1234, PVV: 0187)
+-- Account 3: No PIN configured
+INSERT INTO accounts (account_number, account_holder_name, balance, currency, account_type, status, encrypted_pin_block, pvv, pin_verification_type)
+VALUES
+    ('1234567890', 'John Doe', 5000000.00, 'IDR', 'SAVINGS', 'ACTIVE', '25BBDAB69938C6289C66975BF9315606D945728BF4870C7AB478898DF4E765C4', NULL, 'ENCRYPTED_PIN_BLOCK'),
+    ('0987654321', 'Jane Smith', 3000000.00, 'IDR', 'CHECKING', 'ACTIVE', NULL, '0187', 'PVV'),
+    ('5555555555', 'Bob Johnson', 10000000.00, 'IDR', 'SAVINGS', 'ACTIVE', NULL, NULL, 'ENCRYPTED_PIN_BLOCK');
 
--- Create indexes for performance
-CREATE INDEX idx_key_store_type ON key_store(key_type);
-CREATE INDEX idx_key_store_identifier ON key_store(key_identifier);
-CREATE INDEX idx_key_store_status ON key_store(status);
-CREATE INDEX idx_key_store_expires ON key_store(expires_at);
+-- Insert sample cryptographic keys for TRM-ISS001-ATM-001 terminal
+-- These keys match the HSM simulator sample data
 
-CREATE INDEX idx_pin_block_transaction ON pin_block_store(transaction_id);
-CREATE INDEX idx_pin_block_status ON pin_block_store(status);
-CREATE INDEX idx_pin_block_expires ON pin_block_store(expires_at);
-CREATE INDEX idx_pin_block_pan_hash ON pin_block_store(pan_hash);
+-- TPK (Terminal PIN Key) - Version 1 (ACTIVE)
+-- Key from HSM seed data: TPK-TRM-ISS001-ATM-001
+INSERT INTO crypto_keys (key_type, terminal_id, bank_uuid, key_value, status, key_version, effective_from)
+VALUES
+    ('TPK', 'TRM-ISS001-ATM-001', '48a9e84c-ff57-4483-bf83-b255f34a6466', '246A31D729B280DD7FCDA3BB7F187ABFA1BB0811D7EF3D68FDCA63579F3748B0', 'ACTIVE', 1, CURRENT_TIMESTAMP);
 
-CREATE INDEX idx_security_audit_transaction ON security_audit_log(transaction_id);
-CREATE INDEX idx_security_audit_operation ON security_audit_log(operation_type);
-CREATE INDEX idx_security_audit_status ON security_audit_log(operation_status);
-CREATE INDEX idx_security_audit_timestamp ON security_audit_log(created_at);
-CREATE INDEX idx_security_audit_module ON security_audit_log(module);
-
-CREATE INDEX idx_key_exchange_source ON key_exchange_history(source_system);
-CREATE INDEX idx_key_exchange_target ON key_exchange_history(target_system);
-CREATE INDEX idx_key_exchange_status ON key_exchange_history(exchange_status);
-CREATE INDEX idx_key_exchange_timestamp ON key_exchange_history(exchange_timestamp);
-
-CREATE INDEX idx_mac_validation_transaction ON mac_validation_log(transaction_id);
-CREATE INDEX idx_mac_validation_result ON mac_validation_log(validation_result);
-CREATE INDEX idx_mac_validation_timestamp ON mac_validation_log(created_at);
-
-CREATE INDEX idx_session_keys_session_id ON session_keys(session_id);
-CREATE INDEX idx_session_keys_transaction ON session_keys(transaction_id);
-CREATE INDEX idx_session_keys_participants ON session_keys(participant_a, participant_b);
-CREATE INDEX idx_session_keys_status ON session_keys(session_status);
-CREATE INDEX idx_session_keys_expires ON session_keys(expires_at);
-
--- Create trigger for auto-updating last_activity_at
-CREATE OR REPLACE FUNCTION update_session_activity()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.last_activity_at = CURRENT_TIMESTAMP;
-    NEW.usage_count = OLD.usage_count + 1;
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
-
-CREATE TRIGGER update_session_activity_trigger
-    BEFORE UPDATE ON session_keys
-    FOR EACH ROW EXECUTE FUNCTION update_session_activity();
-
--- Insert initial keys for testing
-INSERT INTO key_store (key_type, key_identifier, key_value, key_algorithm, key_length, description) VALUES
-('ZMK', 'ZMK_001', 'ENCRYPTED_ZMK_VALUE_PLACEHOLDER', 'DESede', 192, 'Zone Master Key for key exchange'),
-('ZPK', 'ZPK_001', 'ENCRYPTED_ZPK_VALUE_PLACEHOLDER', 'DESede', 192, 'Zone PIN Key for PIN encryption'),
-('ZAK', 'ZAK_001', 'ENCRYPTED_ZAK_VALUE_PLACEHOLDER', 'DESede', 192, 'Zone Authentication Key for MAC');
-
--- Create view for active sessions
-CREATE VIEW active_sessions AS
-SELECT
-    s.session_id,
-    s.transaction_id,
-    s.key_type,
-    s.participant_a,
-    s.participant_b,
-    s.created_at,
-    s.expires_at,
-    s.last_activity_at,
-    s.usage_count,
-    s.max_usage_count,
-    k.key_algorithm,
-    CASE
-        WHEN s.expires_at < CURRENT_TIMESTAMP THEN 'EXPIRED'
-        WHEN s.usage_count >= s.max_usage_count THEN 'EXPIRED_BY_USAGE'
-        ELSE s.session_status
-    END as effective_status
-FROM session_keys s
-JOIN key_store k ON s.key_identifier = k.key_identifier
-WHERE s.session_status = 'ACTIVE';
-
--- Create view for security statistics
-CREATE VIEW security_statistics AS
-SELECT
-    DATE_TRUNC('day', created_at) as log_date,
-    operation_type,
-    operation_status,
-    COUNT(*) as operation_count,
-    AVG(processing_time_ms) as avg_processing_time,
-    MAX(processing_time_ms) as max_processing_time
-FROM security_audit_log
-WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
-GROUP BY DATE_TRUNC('day', created_at), operation_type, operation_status
-ORDER BY log_date DESC, operation_type;
+-- TSK (Terminal Security Key for MAC) - Version 1 (ACTIVE)
+-- Key from HSM seed data: TSK-TRM-ISS001-ATM-001
+INSERT INTO crypto_keys (key_type, terminal_id, bank_uuid, key_value, status, key_version, effective_from)
+VALUES
+    ('TSK', 'TRM-ISS001-ATM-001', '48a9e84c-ff57-4483-bf83-b255f34a6466', '3AC638783EF600FE5E25E8A2EE5B0D222EB810DDF64C3681DD11AFEFAF41614B', 'ACTIVE', 1, CURRENT_TIMESTAMP);

@@ -1,0 +1,6 @@
+{
+  "keyType": "TSK",
+  "rotationType": "SCHEDULED",
+  "description": "Terminal-initiated scheduled rotation for Terminal Session Key (MAC)",
+  "gracePeriodHours": 24
+}
