@@ -20,4 +20,4 @@ jpos:
 
 logging:
   level:
-    com.example.atm: DEBUG
+    com.artivisi.atm: DEBUG

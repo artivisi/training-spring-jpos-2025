@@ -59,6 +59,6 @@ terminal:
 
 logging:
   level:
-    com.example.atm: DEBUG
+    com.artivisi.atm: DEBUG
     org.jpos: INFO
     org.hibernate.SQL: DEBUG

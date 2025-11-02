@@ -5,7 +5,7 @@
 
   Terminal identification is retrieved at runtime from Spring configuration via SignOnService.
 -->
-<unhandled-message-service class="com.example.atm.jpos.service.UnhandledMessageService"
+<unhandled-message-service class="com.artivisi.atm.jpos.service.UnhandledMessageService"
                            logger="Q2"
                            realm="unhandled-message-service">
     <!-- TSpace name -->

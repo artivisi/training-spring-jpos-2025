@@ -13,5 +13,5 @@
     <reconnect-delay>10000</reconnect-delay>
 
     <!-- Server-initiated key rotation notification listener -->
-    <request-listener class="com.example.atm.jpos.listener.KeyRotationNotificationListener" logger="Q2" realm="key-rotation-notification"/>
+    <request-listener class="com.artivisi.atm.jpos.listener.KeyRotationNotificationListener" logger="Q2" realm="key-rotation-notification"/>
 </channel-adaptor>

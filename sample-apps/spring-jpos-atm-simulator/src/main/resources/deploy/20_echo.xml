@@ -13,7 +13,7 @@
   - Logs warnings if echo fails (connection problems)
   - Automatically recovers from errors
 -->
-<echo class="com.example.atm.jpos.service.EchoService" logger="Q2">
+<echo class="com.artivisi.atm.jpos.service.EchoService" logger="Q2">
     <!-- Echo interval in milliseconds (default: 180000 = 3 minutes) -->
     <property name="interval" value="180000"/>
 </echo>
