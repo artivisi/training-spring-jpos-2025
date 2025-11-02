@@ -91,7 +91,7 @@ graph TB
     BS --> BP
     BP --> BD
     BD --> DB
-    BP -.->|HTTP/REST| H
+    BD -.->|HTTP/REST| H
 
     classDef atm fill:#e1f5fe,stroke:#01579b
     classDef bank fill:#f3e5f5,stroke:#4a148c
