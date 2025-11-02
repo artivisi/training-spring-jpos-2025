@@ -23,6 +23,9 @@ public class ChannelRegistry {
     // Map: terminalId -> WeakReference<ISOChannel>
     private final Map<String, WeakReference<ISOChannel>> channels = new ConcurrentHashMap<>();
 
+    // Reverse map: channelName -> terminalId (for disconnect event lookup)
+    private final Map<String, String> channelNameToTerminalId = new ConcurrentHashMap<>();
+
     // Set of signed-on terminal IDs
     private final Set<String> signedOnTerminals = ConcurrentHashMap.newKeySet();
 
@@ -44,7 +47,9 @@ public class ChannelRegistry {
         }
 
         channels.put(terminalId, new WeakReference<>(channel));
-        log.info("Registered channel for terminal: {}, connected={}", terminalId, channel.isConnected());
+        channelNameToTerminalId.put(channel.getName(), terminalId);
+        log.info("Registered channel for terminal: {}, channelName={}, connected={}",
+                terminalId, channel.getName(), channel.isConnected());
     }
 
     /**
@@ -103,8 +108,35 @@ public class ChannelRegistry {
         WeakReference<ISOChannel> ref = channels.remove(terminalId);
         signedOnTerminals.remove(terminalId);  // Also remove from signed-on set
 
+        // Remove from reverse map
         if (ref != null) {
+            ISOChannel channel = ref.get();
+            if (channel != null) {
+                channelNameToTerminalId.remove(channel.getName());
+            }
             log.info("Unregistered channel for terminal: {}", terminalId);
+        }
+    }
+
+    /**
+     * Unregister a terminal by channel name (used by disconnect event handler).
+     * This is called when we receive a disconnect event and need to lookup the terminal.
+     *
+     * @param channelName The channel name from ISOChannel.getName()
+     */
+    public void unregisterByChannelName(String channelName) {
+        if (channelName == null || channelName.trim().isEmpty()) {
+            return;
+        }
+
+        String terminalId = channelNameToTerminalId.remove(channelName);
+        if (terminalId != null) {
+            channels.remove(terminalId);
+            signedOnTerminals.remove(terminalId);
+            log.info("Unregistered terminal by channel name: terminalId={}, channelName={}",
+                    terminalId, channelName);
+        } else {
+            log.debug("No terminal found for channel name: {}", channelName);
         }
     }
 
@@ -183,6 +215,8 @@ public class ChannelRegistry {
     public void clear() {
         int count = channels.size();
         channels.clear();
+        channelNameToTerminalId.clear();
+        signedOnTerminals.clear();
         log.info("Cleared {} channel registrations", count);
     }
 }

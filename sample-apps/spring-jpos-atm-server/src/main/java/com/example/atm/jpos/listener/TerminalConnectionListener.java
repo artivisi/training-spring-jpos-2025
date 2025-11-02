@@ -104,11 +104,11 @@ public class TerminalConnectionListener implements org.jpos.iso.ISORequestListen
 
     /**
      * Handle sign-off message from terminal.
-     * Marks terminal as signed off (but keeps channel registered).
+     * Marks terminal as signed off and unregisters the channel (graceful disconnect).
      */
     private void handleSignOff(String terminalId) {
         log.info("Processing sign-off: terminalId={}", terminalId);
-        getChannelRegistry().signOff(terminalId);
-        log.info("Terminal signed off: {}", terminalId);
+        getChannelRegistry().unregister(terminalId);
+        log.info("Terminal signed off and unregistered: {}", terminalId);
     }
 }

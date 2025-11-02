@@ -7,6 +7,9 @@
              packager="${jpos.server.packager}">
     </channel>
 
+    <!-- Terminal disconnect listener: handles cleanup on abrupt disconnects -->
+    <connection-listener class="com.example.atm.jpos.listener.TerminalDisconnectListener" />
+
     <!-- Terminal connection listener: handles sign-on and channel registration -->
     <request-listener class="com.example.atm.jpos.listener.TerminalConnectionListener" />
 
