@@ -6,24 +6,57 @@
     <property name="max-sessions" value="128" />
     <property name="debug" value="true" />
 
+    <!-- ===== COMMON PARTICIPANTS: Run for ALL message types ===== -->
+
     <!-- Sign-on validation - terminals must sign on before transacting (allows 0800 messages) -->
     <participant class="com.example.atm.jpos.participant.SignOnValidationParticipant" logger="Q2" realm="signon-validation" />
-    <!-- MAC verification to verify message integrity -->
-    <participant class="com.example.atm.jpos.participant.MacVerificationParticipant" logger="Q2" realm="mac-verification" />
-    <!-- Sign-on/sign-off response handling (MTI 0800 with field 70) -->
-    <participant class="com.example.atm.jpos.participant.SignOnResponseParticipant" logger="Q2" realm="signon-response" />
-    <!-- Key change handling for network management messages (MTI 0800 with field 53) -->
-    <participant class="com.example.atm.jpos.participant.KeyChangeParticipant" logger="Q2" realm="key-change" />
-    <!-- Financial transaction participants (only process MTI 0200) -->
-    <!-- Account validation before PIN verification - no need to verify PIN for non-existent accounts -->
-    <participant class="com.example.atm.jpos.participant.AccountValidationParticipant" logger="Q2" realm="account-validation" />
-    <participant class="com.example.atm.jpos.participant.PinVerificationParticipant" logger="Q2" realm="pin-verification" />
-    <participant class="com.example.atm.jpos.participant.BalanceInquiryParticipant" logger="Q2" realm="balance-inquiry" />
-    <participant class="com.example.atm.jpos.participant.WithdrawalParticipant" logger="Q2" realm="withdrawal" />
-    <!-- Response participants - always run even when earlier participants abort -->
+
+    <!-- ===== SELECTOR: Routes to appropriate group based on MTI and fields ===== -->
+
+    <participant class="com.example.atm.jpos.participant.MTISelector" logger="Q2" realm="mti-selector" />
+
+    <!-- ===== GROUP: NetworkManagement (0800 + field 70) ===== -->
+    <!-- Handles sign-on/sign-off messages -->
+
+    <group name="NetworkManagement">
+        <!-- MAC verification to verify message integrity -->
+        <participant class="com.example.atm.jpos.participant.MacVerificationParticipant" logger="Q2" realm="mac-verification-network" />
+        <!-- Sign-on/sign-off response handling -->
+        <participant class="com.example.atm.jpos.participant.SignOnResponseParticipant" logger="Q2" realm="signon-response" />
+    </group>
+
+    <!-- ===== GROUP: KeyChange (0800 + field 53) ===== -->
+    <!-- Handles key rotation messages -->
+
+    <group name="KeyChange">
+        <!-- MAC verification (REUSED from NetworkManagement group) -->
+        <participant class="com.example.atm.jpos.participant.MacVerificationParticipant" logger="Q2" realm="mac-verification-keychange" />
+        <!-- Key change handling -->
+        <participant class="com.example.atm.jpos.participant.KeyChangeParticipant" logger="Q2" realm="key-change" />
+    </group>
+
+    <!-- ===== GROUP: FinancialTransaction (0200) ===== -->
+    <!-- Handles balance inquiry and cash withdrawal -->
+
+    <group name="FinancialTransaction">
+        <!-- MAC verification (REUSED from other groups) -->
+        <participant class="com.example.atm.jpos.participant.MacVerificationParticipant" logger="Q2" realm="mac-verification-financial" />
+        <!-- Account validation before PIN verification - no need to verify PIN for non-existent accounts -->
+        <participant class="com.example.atm.jpos.participant.AccountValidationParticipant" logger="Q2" realm="account-validation" />
+        <!-- PIN verification (only for financial transactions) -->
+        <participant class="com.example.atm.jpos.participant.PinVerificationParticipant" logger="Q2" realm="pin-verification" />
+        <!-- Business logic participants -->
+        <participant class="com.example.atm.jpos.participant.BalanceInquiryParticipant" logger="Q2" realm="balance-inquiry" />
+        <participant class="com.example.atm.jpos.participant.WithdrawalParticipant" logger="Q2" realm="withdrawal" />
+    </group>
+
+    <!-- ===== POST-GROUP PARTICIPANTS: Run after group processing ===== -->
+    <!-- These always run regardless of which group was selected -->
+
+    <!-- Response builder - constructs ISO-8583 response message -->
     <participant class="com.example.atm.jpos.participant.ResponseBuilderParticipant" logger="Q2" realm="response-builder" />
-    <!-- MAC generation happens in commit phase of SendResponseParticipant -->
+    <!-- Send response - transmits response and generates MAC in commit phase -->
     <participant class="com.example.atm.jpos.participant.SendResponseParticipant" logger="Q2" realm="send-response" />
-    <!-- Key activation after response sent - activates PENDING keys when terminal uses them -->
+    <!-- Key activation - activates PENDING keys when terminal uses them -->
     <participant class="com.example.atm.jpos.participant.KeyActivationParticipant" logger="Q2" realm="key-activation" />
 </txnmgr>
