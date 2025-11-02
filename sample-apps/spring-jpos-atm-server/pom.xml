@@ -12,7 +12,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.example</groupId>
+    <groupId>com.artivisi</groupId>
     <artifactId>spring-jpos-atm-server</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>spring-jpos-atm-server</name>

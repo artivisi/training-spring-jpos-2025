@@ -1,0 +1,92 @@
+package com.artivisi.atm.jpos.participant;
+
+import lombok.extern.slf4j.Slf4j;
+import org.jpos.iso.ISOException;
+import org.jpos.iso.ISOMsg;
+import org.jpos.iso.ISOSource;
+import org.jpos.transaction.Context;
+import org.jpos.transaction.TransactionParticipant;
+
+import java.io.Serializable;
+
+/**
+ * jPOS TransactionParticipant for sending ISO-8583 response messages back to client.
+ * Note: This class is NOT managed by Spring - it's instantiated by jPOS Q2.
+ */
+@Slf4j
+public class SendResponseParticipant implements TransactionParticipant {
+
+    @Override
+    public int prepare(long id, Serializable context) {
+        return PREPARED | READONLY;
+    }
+
+    @Override
+    public void commit(long id, Serializable context) {
+        Context ctx = (Context) context;
+        try {
+            ISOSource source = (ISOSource) ctx.get("SOURCE");
+            ISOMsg response = (ISOMsg) ctx.get("RESPONSE");
+
+            log.info("SendResponseParticipant.commit called - source: {}, response: {}",
+                     source != null, response != null);
+
+            if (source != null && response != null) {
+                log.info("Sending response: MTI={} RC={}",
+                         response.getMTI(), response.getString(39));
+                source.send(response);
+                log.info("Response sent successfully");
+            } else {
+                log.error("Missing SOURCE or RESPONSE in context - source: {}, response: {}",
+                         source != null, response != null);
+            }
+
+        } catch (Exception e) {
+            log.error("Error sending response: ", e);
+        }
+    }
+
+    @Override
+    public void abort(long id, Serializable context) {
+        Context ctx = (Context) context;
+        log.warn("Transaction {} aborted, attempting to send error response", id);
+
+        try {
+            ISOSource source = (ISOSource) ctx.get("SOURCE");
+            ISOMsg response = (ISOMsg) ctx.get("RESPONSE");
+
+            // If response not built yet (participant aborted before ResponseBuilderParticipant),
+            // build a basic error response
+            if (response == null) {
+                ISOMsg request = (ISOMsg) ctx.get("REQUEST");
+                if (request != null) {
+                    response = (ISOMsg) request.clone();
+                    response.setDirection(ISOMsg.OUTGOING);
+                    String mti = request.getMTI();
+                    String responseMTI = mti.substring(0, 2) + "10";
+                    response.setMTI(responseMTI);
+
+                    String responseCode = (String) ctx.get("RESPONSE_CODE");
+                    if (responseCode == null) {
+                        responseCode = "96"; // System error
+                    }
+                    response.set(39, responseCode);
+                    log.info("Built error response in abort: MTI={} RC={}", responseMTI, responseCode);
+                }
+            }
+
+            if (source != null && response != null) {
+                log.info("Sending error response: MTI={} RC={}",
+                         response.getMTI(), response.getString(39));
+                source.send(response);
+                log.info("Error response sent successfully");
+            } else {
+                log.error("Cannot send error response - source: {}, response: {}",
+                         source != null, response != null);
+            }
+
+        } catch (Exception e) {
+            log.error("Error sending abort response: ", e);
+        }
+    }
+}
