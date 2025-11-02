@@ -142,7 +142,7 @@ Bank → ATM: 0810 Sign-On Response (DE 39 = 00)
 **2. Balance Inquiry**
 ```
 User → ATM UI: Input card number + PIN
-ATM → HSM: Encrypt PIN block (AES-128)
+ATM → Internal Key Storage : Encrypt PIN block (AES-128)
 ATM → Bank: 0200 Balance Request (MTI 0200, Processing Code 310000)
                 DE 2 (PAN), DE 52/123 (PIN Block), DE 64 (MAC)
 Bank → HSM: Verify PIN block
